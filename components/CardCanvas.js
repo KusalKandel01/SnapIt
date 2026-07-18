@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { getDisplayDims } from '../lib/dims';
 
 const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
   const {
@@ -9,11 +10,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
     ratioW, ratioH
   } = data;
 
-  // Fixed-height-only sizing caused unusably tall/short previews for
-  // extreme ratios (Pinterest 2:3, X headers 3:1). Clamp both dimensions.
-  const maxW = 420, maxH = 460;
-  let dispW = maxW, dispH = Math.round(dispW * (ratioH / ratioW));
-  if (dispH > maxH) { dispH = maxH; dispW = Math.round(dispH * (ratioW / ratioH)); }
+  const { w: dispW, h: dispH } = getDisplayDims(ratioW, ratioH);
 
   const wrapStyle = {
     position: 'relative',
@@ -40,7 +37,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
         <div style={{ position: 'absolute', inset: 0, ...bgStyle }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,.05) 0%, rgba(0,0,0,.05) 38%, rgba(0,0,0,.78) 72%, rgba(0,0,0,.95) 100%)' }} />
         <div style={{ position: 'absolute', top: 13, right: 15, fontSize: 10.5, fontStyle: 'italic', color: 'rgba(255,255,255,.85)', textShadow: '0 1px 3px rgba(0,0,0,.6)' }}>{watermark}</div>
-        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 20px 20px 20px', textAlign: align === 'center' ? 'center' : 'left' }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 20px 18px 20px', textAlign: align === 'center' ? 'center' : 'left' }}>
           <span style={{ display: 'inline-block', background: color, color: '#fff', fontFamily: font, fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', padding: '5px 10px', marginBottom: 7, transform: 'skew(-6deg)' }}>
             <span style={{ display: 'inline-block', transform: 'skew(6deg)' }}>{kicker}</span>
           </span>
@@ -49,16 +46,19 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
             <div key={i} style={{ display: 'inline-block', background: color, color: '#fff', fontFamily: font, fontSize: 14, lineHeight: 1.35, textTransform: 'uppercase', padding: '3px 8px', marginBottom: 3 }}>{l}</div>
           ))}
           <div style={{ fontSize: bodySize, fontStyle: 'italic', lineHeight: 1.5, color: 'rgba(255,255,255,.88)', maxWidth: '96%', marginTop: 7, textShadow: '0 1px 4px rgba(0,0,0,.6)', marginLeft: align === 'center' ? 'auto' : 0, marginRight: align === 'center' ? 'auto' : 0 }}>{caption}</div>
+          {cornerTag && <div style={{ marginTop: 10, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
         </div>
-        {cornerTag && <div style={{ position: 'absolute', left: 20, bottom: 20, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
       </div>
     );
   }
 
   if (layout === 'light') {
+    const topVisualStyle = bg
+      ? { ...bgStyle }
+      : { background: `linear-gradient(135deg, ${color}, var(--ink))` };
     return (
       <div ref={ref} style={{ ...wrapStyle, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 26px 18px 26px' }}>
-        <div style={{ width: '100%', height: 160, borderRadius: 10, overflow: 'hidden', ...bgStyle, marginBottom: 20 }} />
+        <div style={{ width: '100%', height: 160, borderRadius: 10, overflow: 'hidden', ...topVisualStyle, marginBottom: 20 }} />
         <div style={{ width: '100%', alignSelf: 'flex-end', fontSize: 10.5, color: 'rgba(0,0,0,.5)', marginBottom: 4, textAlign: 'right' }}>{watermark}</div>
         <div style={{ width: '100%', textAlign: align === 'center' ? 'center' : 'left' }}>
           <span style={{ display: 'inline-block', background: 'var(--ink)', color: '#fff', fontFamily: font, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase', padding: '5px 11px', marginBottom: 12 }}>{kicker}</span>

@@ -1,7 +1,7 @@
 // GET /api/stock?q=mountains
 // Proxies Unsplash's search endpoint so the API key never reaches the browser.
 export default async function handler(req, res) {
-  const { q } = req.query;
+  const { q, orientation } = req.query;
   const key = process.env.UNSPLASH_ACCESS_KEY;
 
   if (!key) {
@@ -13,9 +13,12 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing search query' });
   }
 
+  const validOrientations = ['landscape', 'portrait', 'squarish'];
+  const orient = validOrientations.includes(orientation) ? orientation : 'squarish';
+
   try {
     const upstream = await fetch(
-      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(q)}&per_page=12&orientation=squarish`,
+      `https://api.unsplash.com/search/photos?query=${encodeURIComponent(q)}&per_page=12&orientation=${orient}`,
       { headers: { Authorization: `Client-ID ${key}` } }
     );
     if (!upstream.ok) {

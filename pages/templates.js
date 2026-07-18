@@ -32,7 +32,11 @@ const GROUPS = [
       { name: 'Janasankhya Diwas', data: base({ layout: 'stat', color: '#0f8a4b', font: "'Poppins',sans-serif", statNumber: '#', statLabel: 'POPULATION DAY', statDesc: 'Raising awareness on population, health, and development.', sizeId: 'ig-square' }) },
       { name: 'Shraddhanjali (In Memoriam)', data: base({ layout: 'quote', color: '#6b6f76', font: "'Playfair Display',serif", align: 'center', quoteText: 'In loving memory — forever in our hearts.', quoteAuthor: 'श्रद्धाञ्जली', cornerTag: 'IN MEMORY', sizeId: 'ig-portrait' }) },
       { name: 'Nepali New Year', data: base({ layout: 'light', color: '#e8b93f', font: "'Oswald',sans-serif", align: 'center', kicker: 'नयाँ वर्ष', headline: 'HAPPY NEW YEAR', caption: 'Wishing you a prosperous new year ahead.', cornerTag: 'शुभ नयाँ वर्ष', sizeId: 'ig-square' }) },
-      { name: 'Nepal Match Day', data: base({ layout: 'stat', color: '#cf1b2b', font: "'Poppins',sans-serif", statNumber: 'VS', statLabel: 'MATCH DAY', statDesc: 'Kickoff details and where to watch.', sizeId: 'ig-story' }) }
+      { name: 'Nepal Match Day', data: base({ layout: 'stat', color: '#cf1b2b', font: "'Poppins',sans-serif", statNumber: 'VS', statLabel: 'MATCH DAY', statDesc: 'Kickoff details and where to watch.', sizeId: 'ig-story' }) },
+      { name: 'Grand Opening (Nepal)', data: base({ layout: 'dark', align: 'center', color: '#0f8a4b', font: "'Poppins',sans-serif", kicker: 'ग्रान्ड ओपनिंग', headline: 'NOW OPEN', caption: 'Visit us — details and location below.', cornerTag: 'शुभ उद्घाटन', sizeId: 'ig-square' }) },
+      { name: 'Election / Voting Reminder', data: base({ layout: 'dark', color: '#1a63c9', font: "'Oswald',sans-serif", kicker: 'निर्वाचन', headline: 'YOUR VOTE MATTERS', caption: 'Polling details and dates below.', cornerTag: 'मतदान गर्नुहोस्', sizeId: 'ig-square' }) },
+      { name: 'Nepali Wedding Invite', data: base({ layout: 'quote', color: '#e8b93f', font: "'Playfair Display',serif", align: 'center', quoteText: 'Together with their families, request the honor of your presence.', quoteAuthor: 'विवाह निमन्त्रणा', cornerTag: 'शुभ विवाह', sizeId: 'ig-portrait' }) },
+      { name: 'School Admission Open', data: base({ layout: 'light', color: '#1a63c9', font: "'Oswald',sans-serif", kicker: 'भर्ना खुल्ला', headline: 'ADMISSIONS OPEN', caption: 'Enroll now — seats are limited.', cornerTag: 'सम्पर्क गर्नुहोस्', sizeId: 'ig-square' })}
     ]
   },
   {
@@ -51,7 +55,15 @@ const GROUPS = [
       { name: 'World Cup Match Day', data: base({ layout: 'stat', color: '#0f8a4b', font: "'Poppins',sans-serif", statNumber: 'VS', statLabel: 'MATCH DAY', statDesc: 'Kickoff time and where to watch.', sizeId: 'ig-story' }) },
       { name: 'New Year (Global)', data: base({ layout: 'dark', align: 'center', color: '#e8b93f', font: "'Anton',sans-serif", headSize: 44, kicker: 'HAPPY NEW YEAR', headline: '2027', caption: 'Wishing you a bright year ahead.', sizeId: 'ig-square' }) },
       { name: 'Webinar / Workshop', data: base({ layout: 'light', color: '#1a63c9', font: "'Oswald',sans-serif", kicker: 'FREE WEBINAR', headline: 'TOPIC TITLE HERE', caption: 'Register through the link in bio.', cornerTag: 'REGISTER NOW', sizeId: 'ig-portrait' }) },
-      { name: 'Recipe / Food Feature', data: base({ layout: 'light', color: '#f8c498', font: "'Poppins',sans-serif", bg: PHOTO_NEWSPAPER, kicker: 'RECIPE', headline: 'DISH NAME HERE', caption: 'Full recipe and steps in the caption below.', sizeId: 'ig-portrait' }) }
+      { name: 'Recipe / Food Feature', data: base({ layout: 'light', color: '#f8c498', font: "'Poppins',sans-serif", bg: PHOTO_NEWSPAPER, kicker: 'RECIPE', headline: 'DISH NAME HERE', caption: 'Full recipe and steps in the caption below.', sizeId: 'ig-portrait' }) },
+      { name: 'Graduation', data: base({ layout: 'light', align: 'center', color: '#1a63c9', font: "'Playfair Display',serif", kicker: 'GRADUATION', headline: 'CLASS OF THE YEAR', caption: 'Congratulations on this milestone.', sizeId: 'ig-square' }) },
+      { name: 'Retirement', data: base({ layout: 'quote', color: '#8f6c30', font: "'Playfair Display',serif", quoteText: 'Thank you for the years of dedication and hard work.', quoteAuthor: 'Happy Retirement', sizeId: 'ig-square' }) },
+      { name: 'Grand Opening', data: base({ layout: 'dark', align: 'center', color: '#0f8a4b', font: "'Poppins',sans-serif", kicker: 'GRAND OPENING', headline: 'WE ARE NOW OPEN', caption: 'Come visit us — details below.', cornerTag: 'VISIT US', sizeId: 'ig-square' }) },
+      { name: 'Podcast Episode', data: base({ layout: 'dark', color: '#8a2be2', font: "'Poppins',sans-serif", kicker: 'NEW EPISODE', headline: 'EPISODE TITLE HERE', bannerLines: 'Out now on all platforms', caption: 'Listen wherever you get your podcasts.', sizeId: 'ig-square' }) },
+      { name: 'Book Launch', data: base({ layout: 'light', color: '#1a63c9', font: "'Playfair Display',serif", kicker: 'NEW RELEASE', headline: 'BOOK TITLE HERE', caption: 'Available now — link in bio.', cornerTag: 'GET YOUR COPY', sizeId: 'ig-portrait' }) },
+      { name: 'Charity Fundraiser', data: base({ layout: 'stat', color: '#9c3b3b', font: "'Poppins',sans-serif", statNumber: '$0', statLabel: 'RAISED SO FAR', statDesc: 'Every contribution helps — link in bio to donate.', sizeId: 'ig-square' }) },
+      { name: 'Concert / Music Event', data: base({ layout: 'dark', align: 'center', color: '#8a2be2', font: "'Poppins',sans-serif", kicker: 'LIVE MUSIC', headline: 'ARTIST / BAND NAME', bannerLines: 'Date · Venue · Time', caption: 'Tickets available now.', cornerTag: 'GET TICKETS', sizeId: 'ig-portrait' }) },
+      { name: 'Public Health Advisory', data: base({ layout: 'dark', color: '#3e6259', font: "'Oswald',sans-serif", kicker: 'HEALTH ADVISORY', headline: 'IMPORTANT UPDATE', caption: 'Details and guidance from health officials below.', cornerTag: 'STAY SAFE', sizeId: 'ig-square' }) }
     ]
   }
 ];

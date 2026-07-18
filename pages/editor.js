@@ -21,7 +21,7 @@ const DEFAULT_DATA = {
   headline: 'HEADLINE GOES HERE',
   bannerLines: 'Short supporting line one\nShort supporting line two',
   caption: 'Add a short descriptive caption here explaining the context.',
-  cornerTag: 'IN-DEPTH STORY',
+  cornerTag: '',
   quoteText: 'This is the quote text that carries the message.',
   quoteAuthor: 'Person Name, Title',
   statNumber: '72%',
@@ -48,6 +48,8 @@ export default function Editor() {
   const [grammarIssues, setGrammarIssues] = useState(null);
   const [grammarChecking, setGrammarChecking] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [batchExporting, setBatchExporting] = useState(false);
+  const dragState = useRef(null);
   const cardRef = useRef(null);
   const videoPreviewRef = useRef(null);
   const { toast, ToastEl } = useToast();
@@ -92,6 +94,77 @@ export default function Editor() {
   }
 
   function resetFraming() { setData(d => ({ ...d, panX: 50, panY: 50, zoom: 100 })); }
+
+  function startDrag(e) {
+    if (!(data.mediaType === 'image') || !(data.layout === 'dark' || data.layout === 'light')) return;
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragState.current = {
+      startX: e.clientX, startY: e.clientY,
+      startPanX: data.panX, startPanY: data.panY,
+      rectW: rect.width, rectH: rect.height
+    };
+    window.addEventListener('mousemove', onDragMove);
+    window.addEventListener('mouseup', onDragEnd);
+  }
+  function onDragMove(e) {
+    if (!dragState.current) return;
+    const { startX, startY, startPanX, startPanY, rectW, rectH } = dragState.current;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    const nextX = Math.min(100, Math.max(0, startPanX - (dx / rectW) * 100));
+    const nextY = Math.min(100, Math.max(0, startPanY - (dy / rectH) * 100));
+    setData(d => ({ ...d, panX: Math.round(nextX), panY: Math.round(nextY) }));
+  }
+  function onDragEnd() {
+    dragState.current = null;
+    window.removeEventListener('mousemove', onDragMove);
+    window.removeEventListener('mouseup', onDragEnd);
+  }
+
+  // Same content, every platform's real size, one click. Naively rescaling
+  // whatever's currently on screen would just stretch a square into a
+  // portrait/landscape box — html2canvas's `scale` option only magnifies
+  // uniformly, it can't reshape an aspect ratio. So this actually switches
+  // the live sizeId, waits for the real re-render at that ratio, captures,
+  // then moves to the next — and restores your original size afterward.
+  function waitForFrame() { return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }
+
+  async function exportAllPlatforms() {
+    setBatchExporting(true);
+    const html2canvas = (await import('html2canvas')).default;
+    const JSZip = (await import('jszip')).default;
+    const targets = [
+      { label: 'instagram-square', sizeId: 'ig-square' },
+      { label: 'instagram-story', sizeId: 'ig-story' },
+      { label: 'facebook-post', sizeId: 'fb-link' },
+      { label: 'x-post', sizeId: 'x-post' },
+      { label: 'tiktok-fullscreen', sizeId: 'tt-full' }
+    ];
+    const originalSizeId = data.sizeId;
+    const zip = new JSZip();
+    try {
+      for (const t of targets) {
+        setData(d => ({ ...d, sizeId: t.sizeId }));
+        await waitForFrame();
+        const target = findSize(t.sizeId);
+        const node = cardRef.current;
+        const scale = target.w / node.getBoundingClientRect().width;
+        const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.95));
+        zip.file(`${t.label}-${target.w}x${target.h}.png`, blob);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.download = 'snap-card-all-platforms.zip';
+      link.href = URL.createObjectURL(zipBlob);
+      link.click();
+      toast('All platform sizes exported');
+    } catch (err) {
+      toast('Batch export failed — cross-origin images can block this, try uploading the file instead');
+    }
+    setData(d => ({ ...d, sizeId: originalSizeId }));
+    setBatchExporting(false);
+  }
 
   function onUploadPhoto(e) {
     const file = e.target.files[0];
@@ -404,6 +477,9 @@ export default function Editor() {
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
           </div>
           <button className="btn secondary" style={{ width: '100%', marginTop: 8 }} onClick={copyImage}>Copy image</button>
+          <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={exportAllPlatforms} disabled={batchExporting}>
+            {batchExporting ? 'Rendering all sizes…' : 'Export for Instagram, X, Facebook, TikTok — all at once'}
+          </button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn secondary" onClick={saveProject}>Save as file</button>
             <label className="btn secondary" style={{ textAlign: 'center', cursor: 'pointer' }}>
@@ -413,13 +489,21 @@ export default function Editor() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
           <div className="proof-frame" style={{ background: 'var(--ink-2)', border: '1px solid var(--rule)' }}>
             <div className="cm-tr" />
             <div className="cm-bl" />
             <div className="proof-stamp">{size.w}×{size.h} · {size.name}</div>
-            <CardCanvas ref={cardRef} data={{ ...data, ratioW: size.w, ratioH: size.h }} />
+            <div
+              onMouseDown={startDrag}
+              style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default' }}
+            >
+              <CardCanvas ref={cardRef} data={{ ...data, ratioW: size.w, ratioH: size.h }} />
+            </div>
           </div>
+          {showBgFields && data.mediaType === 'image' && (
+            <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: 10 }}>Click and drag the photo above to reposition it — same as the sliders, just faster.</p>
+          )}
         </div>
       </div>
       {ToastEl}

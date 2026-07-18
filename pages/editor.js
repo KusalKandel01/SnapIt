@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import CardCanvas from '../components/CardCanvas';
 import useToast from '../components/useToast';
+import { useAutosave } from '../components/useAutosave';
 import { PLATFORM_GROUPS, findSize } from '../lib/platformSizes';
 
 const DEFAULT_DATA = {
   layout: 'dark',
-  align: 'left',
+  align: 'center',
   color: '#cf1b2b',
   font: "'Anton',sans-serif",
   headSize: 34,
   bodySize: 12,
+  mediaType: 'image',
   bg: 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&q=60',
+  videoUrl: '',
   panX: 50, panY: 50, zoom: 100,
   watermark: 'yoursource',
   kicker: 'BREAKING',
@@ -36,26 +39,43 @@ const FONTS = [
 
 export default function Editor() {
   const [data, setData] = useState(DEFAULT_DATA);
+  const [loadedPreset, setLoadedPreset] = useState(false);
   const [stockQuery, setStockQuery] = useState('');
   const [stockResults, setStockResults] = useState([]);
   const [stockLoading, setStockLoading] = useState(false);
   const [mediaUrlInput, setMediaUrlInput] = useState('');
   const [mediaUrlError, setMediaUrlError] = useState('');
+  const [grammarIssues, setGrammarIssues] = useState(null);
+  const [grammarChecking, setGrammarChecking] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const cardRef = useRef(null);
+  const videoPreviewRef = useRef(null);
   const { toast, ToastEl } = useToast();
+  const { history, formatTs } = useAutosave(data, !loadedPreset);
 
+  // Load a template preset if one was set, otherwise restore the most
+  // recent autosave so a refresh or accidental close never loses work.
   useEffect(() => {
     try {
       const preset = sessionStorage.getItem('snapstudio:preset');
       if (preset) {
         setData(d => ({ ...d, ...JSON.parse(preset) }));
         sessionStorage.removeItem('snapstudio:preset');
+      } else {
+        const saved = JSON.parse(localStorage.getItem('snapstudio:history') || '[]');
+        if (saved.length > 0) setData(d => ({ ...d, ...saved[0].data }));
       }
     } catch (e) {}
+    setLoadedPreset(true);
   }, []);
 
   const set = (key, val) => setData(d => ({ ...d, [key]: val }));
   const size = findSize(data.sizeId);
+
+  function restoreVersion(ts) {
+    const found = history.find(h => h.ts === ts);
+    if (found) { setData(d => ({ ...d, ...found.data })); toast(`Restored version from ${formatTs(ts)}`); setShowHistory(false); }
+  }
 
   async function searchStock(e) {
     e.preventDefault();
@@ -67,82 +87,76 @@ export default function Editor() {
       const json = await res.json();
       if (json.error) { toast(json.error); setStockResults([]); }
       else setStockResults(json.results || []);
-    } catch (err) {
-      toast('Search failed — check your connection');
-    }
+    } catch (err) { toast('Search failed — check your connection'); }
     setStockLoading(false);
   }
+
+  function resetFraming() { setData(d => ({ ...d, panX: 50, panY: 50, zoom: 100 })); }
 
   function onUploadPhoto(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => { set('bg', ev.target.result); resetFraming(); };
+    reader.onload = ev => { set('mediaType', 'image'); set('bg', ev.target.result); resetFraming(); };
     reader.readAsDataURL(file);
   }
 
-  function resetFraming() {
-    setData(d => ({ ...d, panX: 50, panY: 50, zoom: 100 }));
-  }
-
-  // Direct image URL — for pasting a link from anywhere instead of uploading a file
   function useMediaUrlAsImage() {
     if (!mediaUrlInput.trim()) return;
     setMediaUrlError('');
+    set('mediaType', 'image');
     set('bg', mediaUrlInput.trim());
     resetFraming();
     toast('Image URL applied — if it looks blank, the source may block outside embedding');
   }
 
-  // Video URL — attempts to grab a frame. Requires the host to allow
-  // cross-origin canvas reads (CORS); most video hosting/social platforms
-  // block this by design, so this works reliably only for direct, CORS-open
-  // video file URLs (e.g. your own S3/Cloud storage), not arbitrary platform links.
-  function useMediaUrlAsVideoFrame() {
+  function useMediaUrlAsVideo() {
     if (!mediaUrlInput.trim()) return;
     setMediaUrlError('');
-    const video = document.createElement('video');
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.src = mediaUrlInput.trim();
-    video.addEventListener('loadeddata', () => { video.currentTime = Math.min(1, (video.duration || 2) / 2); });
-    video.addEventListener('seeked', () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        set('bg', canvas.toDataURL('image/png'));
-        resetFraming();
-        toast('Frame captured from video URL');
-      } catch (err) {
-        setMediaUrlError('This video source blocks cross-origin frame capture (most platforms do this deliberately). Try uploading the video file instead.');
-      }
-    });
-    video.addEventListener('error', () => {
-      setMediaUrlError('Could not load that video URL — check the link, or upload the file directly.');
-    });
+    set('mediaType', 'video');
+    set('videoUrl', mediaUrlInput.trim());
+    toast('Video loaded for in-app preview — captures a still frame on export');
   }
 
   function onUploadVideo(e) {
     const file = e.target.files[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
-    const video = document.createElement('video');
-    video.src = url;
-    video.muted = true;
-    video.addEventListener('loadeddata', () => { video.currentTime = Math.min(1, video.duration / 2); });
-    video.addEventListener('seeked', () => {
+    set('mediaType', 'video');
+    set('videoUrl', url);
+    toast('Video loaded — play it below, then "Use current frame" to set the export image');
+  }
+
+  function captureVideoFrame() {
+    const video = videoPreviewRef.current;
+    if (!video) return;
+    try {
       const canvas = document.createElement('canvas');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      set('mediaType', 'image');
       set('bg', canvas.toDataURL('image/png'));
       resetFraming();
-      toast('Frame captured from video');
-      URL.revokeObjectURL(url);
-    });
-    video.addEventListener('error', () => toast('Could not read that video file — try a different format (MP4/WebM work best)'));
+      toast('Frame captured — now the card background');
+    } catch (err) {
+      setMediaUrlError('This video source blocks frame capture (cross-origin protection most platforms enforce). Try uploading the video file instead.');
+    }
+  }
+
+  async function checkGrammar() {
+    const combined = [data.headline, data.bannerLines, data.caption, data.quoteText, data.statDesc].filter(Boolean).join('\n');
+    if (!combined.trim()) { toast('Nothing to check yet'); return; }
+    setGrammarChecking(true);
+    try {
+      const res = await fetch('/api/grammar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: combined })
+      });
+      const json = await res.json();
+      if (json.error) toast(json.error);
+      else { setGrammarIssues(json.issues); toast(json.issues.length ? `${json.issues.length} suggestion(s) found` : 'No issues found — looks good'); }
+    } catch (err) { toast('Grammar check failed — check your connection'); }
+    setGrammarChecking(false);
   }
 
   async function exportImage(format) {
@@ -172,10 +186,10 @@ export default function Editor() {
   function saveProject() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
-    link.download = 'snap-project.json';
+    link.download = `snap-project-${new Date().toISOString().slice(0,10)}.json`;
     link.href = URL.createObjectURL(blob);
     link.click();
-    toast('Project saved');
+    toast('Project saved as a file');
   }
 
   function loadProject(e) {
@@ -200,8 +214,23 @@ export default function Editor() {
 
   return (
     <Layout>
-      <h1 className="page-title">Editor</h1>
-      <p className="page-sub">Build one card, pick a platform size, export or copy it straight to your clipboard.</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 className="page-title">Editor</h1>
+          <p className="page-sub">Build one card, pick a platform size, export or copy it straight to your clipboard. Every change autosaves — closing the tab never loses your work.</p>
+        </div>
+        <div style={{ position: 'relative' }}>
+          <button className="btn secondary" onClick={() => setShowHistory(s => !s)}>Version history ({history.length})</button>
+          {showHistory && (
+            <div className="history-panel">
+              {history.length === 0 && <div className="history-empty">No saved versions yet — keep editing.</div>}
+              {history.map(h => (
+                <div key={h.ts} className="history-item" onClick={() => restoreVersion(h.ts)}>{formatTs(h.ts)}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24 }}>
         <div className="card-panel" style={{ maxHeight: '84vh', overflowY: 'auto' }}>
@@ -230,8 +259,8 @@ export default function Editor() {
             <div className="field">
               <label>Text alignment</label>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className={`btn ${data.align === 'left' ? '' : 'secondary'}`} onClick={() => set('align', 'left')}>Left</button>
                 <button className={`btn ${data.align === 'center' ? '' : 'secondary'}`} onClick={() => set('align', 'center')}>Centered</button>
+                <button className={`btn ${data.align === 'left' ? '' : 'secondary'}`} onClick={() => set('align', 'left')}>Left</button>
               </div>
             </div>
           )}
@@ -264,29 +293,40 @@ export default function Editor() {
                 <input type="file" accept="image/*" onChange={onUploadPhoto} />
               </div>
               <div className="field">
-                <label>Or paste an image / video URL</label>
-                <input type="text" value={mediaUrlInput} onChange={e => setMediaUrlInput(e.target.value)} placeholder="https://... image or direct video file link" />
+                <label>Or your own video — play, scrub, then grab a frame</label>
+                <input type="file" accept="video/*" onChange={onUploadVideo} />
+              </div>
+              <div className="field">
+                <label>Or paste an image / direct video URL</label>
+                <input type="text" value={mediaUrlInput} onChange={e => setMediaUrlInput(e.target.value)} placeholder="https://..." />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
                   <button className="btn secondary" onClick={useMediaUrlAsImage}>Use as image</button>
-                  <button className="btn secondary" onClick={useMediaUrlAsVideoFrame}>Grab frame from video URL</button>
+                  <button className="btn secondary" onClick={useMediaUrlAsVideo}>Load as video</button>
                 </div>
                 {mediaUrlError && <p style={{ color: '#ff9c9c', fontSize: 11, marginTop: 6 }}>{mediaUrlError}</p>}
               </div>
-              <div className="field">
-                <label>Or grab a frame from a video file you own</label>
-                <input type="file" accept="video/*" onChange={onUploadVideo} />
-              </div>
 
-              <div className="field">
-                <label>Position &amp; zoom (fixes cropping when you switch platform size)</label>
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 4 }}>Horizontal — {data.panX}%</div>
-                <input type="range" min="0" max="100" value={data.panX} onChange={e => set('panX', +e.target.value)} style={{ width: '100%' }} />
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 4px' }}>Vertical — {data.panY}%</div>
-                <input type="range" min="0" max="100" value={data.panY} onChange={e => set('panY', +e.target.value)} style={{ width: '100%' }} />
-                <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 4px' }}>Zoom — {data.zoom}%</div>
-                <input type="range" min="100" max="250" value={data.zoom} onChange={e => set('zoom', +e.target.value)} style={{ width: '100%' }} />
-                <button className="btn secondary" style={{ marginTop: 6 }} onClick={resetFraming}>Reset position &amp; zoom</button>
-              </div>
+              {data.mediaType === 'video' && data.videoUrl && (
+                <div className="field">
+                  <label>Video preview</label>
+                  <video ref={videoPreviewRef} src={data.videoUrl} controls style={{ width: '100%', borderRadius: 8, background: '#000' }} />
+                  <button className="btn secondary" style={{ marginTop: 6, width: '100%' }} onClick={captureVideoFrame}>Use current frame as card background</button>
+                  <p style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 6 }}>PNG/JPEG exports are still images — pause on the frame you want, then capture it. The original video stays yours to post separately wherever the platform supports video.</p>
+                </div>
+              )}
+
+              {data.mediaType === 'image' && (
+                <div className="field">
+                  <label>Position &amp; zoom (fixes cropping when you switch platform size)</label>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 4 }}>Horizontal — {data.panX}%</div>
+                  <input type="range" min="0" max="100" value={data.panX} onChange={e => set('panX', +e.target.value)} style={{ width: '100%' }} />
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 4px' }}>Vertical — {data.panY}%</div>
+                  <input type="range" min="0" max="100" value={data.panY} onChange={e => set('panY', +e.target.value)} style={{ width: '100%' }} />
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '6px 0 4px' }}>Zoom — {data.zoom}%</div>
+                  <input type="range" min="100" max="250" value={data.zoom} onChange={e => set('zoom', +e.target.value)} style={{ width: '100%' }} />
+                  <button className="btn secondary" style={{ marginTop: 6 }} onClick={resetFraming}>Reset position &amp; zoom</button>
+                </div>
+              )}
 
               <div className="field">
                 <label>Search free HQ stock photos (Unsplash)</label>
@@ -300,17 +340,15 @@ export default function Editor() {
                       {stockResults.map(r => (
                         <div key={r.id}>
                           <img src={r.thumb} alt={r.alt}
-                            onClick={() => { set('bg', r.full); resetFraming(); toast(`Photo by ${r.credit} applied`); }}
+                            onClick={() => { set('mediaType', 'image'); set('bg', r.full); resetFraming(); toast(`Photo by ${r.credit} applied`); }}
                             style={{ width: '100%', height: 54, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: '1px solid var(--line)' }} />
                           <a href={`${r.creditUrl}?utm_source=snap_studio&utm_medium=referral`} target="_blank" rel="noreferrer"
-                            style={{ fontSize: 9, color: 'var(--muted)', display: 'block', marginTop: 2, textAlign: 'center', textDecoration: 'none' }}>
-                            {r.credit}
-                          </a>
+                            style={{ fontSize: 9, color: 'var(--muted)', display: 'block', marginTop: 2, textAlign: 'center', textDecoration: 'none' }}>{r.credit}</a>
                         </div>
                       ))}
                     </div>
                     <p style={{ fontSize: 10, color: 'var(--muted)', marginTop: 6 }}>
-                      Photos via <a href="https://unsplash.com/?utm_source=snap_studio&utm_medium=referral" target="_blank" rel="noreferrer" style={{ color: 'var(--gold)' }}>Unsplash</a> — please keep photographer credit visible if you republish, per Unsplash's guidelines.
+                      Photos via <a href="https://unsplash.com/?utm_source=snap_studio&utm_medium=referral" target="_blank" rel="noreferrer" style={{ color: 'var(--gold)' }}>Unsplash</a> — keep photographer credit visible if you republish.
                     </p>
                   </>
                 )}
@@ -348,22 +386,35 @@ export default function Editor() {
             </>
           )}
 
+          <button className="btn secondary" style={{ width: '100%', marginBottom: 8 }} onClick={checkGrammar}>{grammarChecking ? 'Checking...' : 'Check grammar & spelling'}</button>
+          {grammarIssues && (
+            <div style={{ marginBottom: 12, fontSize: 11.5 }}>
+              {grammarIssues.length === 0 && <p style={{ color: 'var(--muted)' }}>No issues found.</p>}
+              {grammarIssues.map((iss, i) => (
+                <div key={i} style={{ padding: '6px 8px', background: 'var(--panel-2)', borderRadius: 6, marginBottom: 5 }}>
+                  <strong style={{ color: '#ff9c9c' }}>&ldquo;{iss.snippet}&rdquo;</strong> — {iss.message}
+                  {iss.suggestions.length > 0 && <div style={{ color: 'var(--gold)', marginTop: 2 }}>Try: {iss.suggestions.join(', ')}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
           </div>
           <button className="btn secondary" style={{ width: '100%', marginTop: 8 }} onClick={copyImage}>Copy image</button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-            <button className="btn secondary" onClick={saveProject}>Save project</button>
+            <button className="btn secondary" onClick={saveProject}>Save as file</button>
             <label className="btn secondary" style={{ textAlign: 'center', cursor: 'pointer' }}>
-              Load project
+              Load a file
               <input type="file" accept="application/json" onChange={loadProject} style={{ display: 'none' }} />
             </label>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 20 }}>
-          <div style={{ background: 'repeating-conic-gradient(#141517 0% 25%, #191a1d 0% 50%) 50% / 22px 22px', padding: 24, borderRadius: 10 }}>
+          <div style={{ background: 'repeating-conic-gradient(#141517 0% 25%, #191a1d 0% 50%) 50% / 22px 22px', padding: 24, borderRadius: 14, boxShadow: 'var(--shadow-lift)' }}>
             <CardCanvas ref={cardRef} data={{ ...data, ratioW: size.w, ratioH: size.h }} />
           </div>
         </div>

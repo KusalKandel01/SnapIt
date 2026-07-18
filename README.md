@@ -5,12 +5,22 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 ## What's included
 
 - `pages/index.js` — dashboard
-- `pages/editor.js` — the main card builder (layouts, platform sizes, stock photo search, video-frame capture, export, save/load)
-- `pages/templates.js` — one-click starting points
+- `pages/editor.js` — the main card builder: 4 layouts (Dark Alert, Light Card, Quote, Stat), platform sizes, text-size sliders, image pan/zoom, video upload/URL with in-app preview and frame capture, stock photo search, grammar check, version history, export, save/load
+- `pages/templates.js` — 23 starting points across Nepal-specific occasions and worldwide formats
 - `pages/brand.js` — logo + brand name (saved in your browser)
-- `pages/api/stock.js` — server-side proxy to Unsplash so your API key is never exposed to the browser
+- `pages/api/stock.js` — server-side proxy to Unsplash (keeps your key private)
+- `pages/api/grammar.js` — server-side proxy to LanguageTool's public grammar API
 - `lib/platformSizes.js` — the full list of platform sizes; add more here any time
-- `components/CardCanvas.js` — the actual card renderer, shared by Editor and Templates
+- `components/CardCanvas.js` — the actual card renderer
+- `components/useAutosave.js` — debounced, timestamped autosave to `localStorage` — every edit is saved, nothing is lost on refresh or accidental close
+
+## Autosave & version history
+
+Every change you make is saved locally (in your browser) about a second after you stop typing, timestamped. The "Version history" button in the Editor lists every saved snapshot by date and time — click one to restore it. Reopening the Editor after closing the tab automatically picks up your most recent save. This is separate from "Save as file" / "Load a file," which export/import a single project as a portable `.json` you can hand to someone else or keep permanently outside the browser.
+
+## Grammar check
+
+Click "Check grammar & spelling" in the Editor to run your headline, banner lines, caption, quote, and stat description through LanguageTool's public API. It lists issues with suggested fixes — nothing is auto-replaced, you choose what to apply. The public endpoint is fine for personal use; for heavy/production traffic, get a LanguageTool API key or self-host it and swap the URL in `pages/api/grammar.js`.
 
 ## Run it locally
 
@@ -58,6 +68,10 @@ This is a real, working scaffold covering the core flow end to end — not every
 - Pan/zoom and filter controls on the background image
 - Undo/redo history
 - A second stock provider (Pexels has a similarly free API) as a fallback in `pages/api/stock.js`
+
+## On the "competitor and social user scraping" idea
+
+Deliberately not built. Automatically scraping competitors' content and republishing it as your own is copyright infringement and plagiarism; scraping other people's social accounts for data violates every major platform's Terms of Service and is a real privacy problem. If you want legitimate competitive/trend awareness, the sound approach is an RSS aggregator — pull public headlines and links from feeds you choose, display them for inspiration, always link back and credit the source. Ask if you want that wired in as a page.
 
 ## Notes on the "auto-fetch a person's photo" idea
 

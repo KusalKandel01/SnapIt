@@ -30,7 +30,8 @@ const DEFAULT_DATA = {
   statNumber: '72%',
   statLabel: 'LABEL HERE',
   statDesc: 'One or two lines of context for the statistic shown above.',
-  sizeId: 'ig-square'
+  sizeId: 'ig-square',
+  layers: []
 };
 
 const FONTS = [
@@ -65,6 +66,8 @@ export default function Editor() {
   const [showHistory, setShowHistory] = useState(false);
   const [batchExporting, setBatchExporting] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [selectedLayerId, setSelectedLayerId] = useState(null);
+  const layerDragState = useRef(null);
   const dragState = useRef(null);
   const cardRef = useRef(null);
   const videoPreviewRef = useRef(null);
@@ -140,6 +143,80 @@ export default function Editor() {
     window.removeEventListener('mousemove', onDragMove);
     window.removeEventListener('mouseup', onDragEnd);
   }
+
+  // ---- Text layers: unlimited freeform text boxes on top of any layout ----
+  function addTextLayer() {
+    const id = `layer-${Date.now()}`;
+    const newLayer = { id, text: 'New text', x: 50, y: 50, fontSize: 24, color: '#ffffff', rotation: 0, opacity: 1, bold: false, visible: true, locked: false };
+    setData(d => ({ ...d, layers: [...(d.layers || []), newLayer] }));
+    setSelectedLayerId(id);
+  }
+  function updateLayer(id, patch) {
+    setData(d => ({ ...d, layers: d.layers.map(l => l.id === id ? { ...l, ...patch } : l) }));
+  }
+  function deleteLayer(id) {
+    setData(d => ({ ...d, layers: d.layers.filter(l => l.id !== id) }));
+    if (selectedLayerId === id) setSelectedLayerId(null);
+  }
+  function duplicateLayer(id) {
+    setData(d => {
+      const src = d.layers.find(l => l.id === id);
+      if (!src) return d;
+      const copy = { ...src, id: `layer-${Date.now()}`, x: Math.min(95, src.x + 4), y: Math.min(95, src.y + 4) };
+      return { ...d, layers: [...d.layers, copy] };
+    });
+  }
+
+  const SNAP_THRESHOLD = 3; // percent — how close to center before it snaps
+  function onLayerMouseDown(e, id) {
+    const layer = data.layers.find(l => l.id === id);
+    if (!layer || layer.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedLayerId(id);
+    const canvasEl = e.currentTarget.parentElement;
+    const rect = canvasEl.getBoundingClientRect();
+    layerDragState.current = { id, startX: e.clientX, startY: e.clientY, startLX: layer.x, startLY: layer.y, rectW: rect.width, rectH: rect.height };
+    window.addEventListener('mousemove', onLayerDragMove);
+    window.addEventListener('mouseup', onLayerDragEnd);
+  }
+  function onLayerDragMove(e) {
+    const s = layerDragState.current;
+    if (!s) return;
+    const dx = e.clientX - s.startX, dy = e.clientY - s.startY;
+    let nx = s.startLX + (dx / s.rectW) * 100;
+    let ny = s.startLY + (dy / s.rectH) * 100;
+    if (Math.abs(nx - 50) < SNAP_THRESHOLD) nx = 50;
+    if (Math.abs(ny - 50) < SNAP_THRESHOLD) ny = 50;
+    nx = Math.min(100, Math.max(0, nx));
+    ny = Math.min(100, Math.max(0, ny));
+    updateLayer(s.id, { x: Math.round(nx * 10) / 10, y: Math.round(ny * 10) / 10 });
+  }
+  function onLayerDragEnd() {
+    layerDragState.current = null;
+    window.removeEventListener('mousemove', onLayerDragMove);
+    window.removeEventListener('mouseup', onLayerDragEnd);
+  }
+
+  // Keyboard nudge + delete for the selected layer — skipped entirely while
+  // typing in any input/textarea so it never hijacks normal text editing.
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (!selectedLayerId) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const layer = data.layers.find(l => l.id === selectedLayerId);
+      if (!layer || layer.locked) return;
+      const step = e.shiftKey ? 5 : 1;
+      if (e.key === 'ArrowUp') { e.preventDefault(); updateLayer(selectedLayerId, { y: Math.max(0, layer.y - step) }); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); updateLayer(selectedLayerId, { y: Math.min(100, layer.y + step) }); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); updateLayer(selectedLayerId, { x: Math.max(0, layer.x - step) }); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); updateLayer(selectedLayerId, { x: Math.min(100, layer.x + step) }); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteLayer(selectedLayerId); }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedLayerId, data.layers]);
 
   function waitForFrame() { return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }
 
@@ -288,6 +365,7 @@ export default function Editor() {
         // give them one instead of leaving the field blank/undefined.
         if (typeof loaded !== 'object' || !loaded.layout) { toast("That file doesn't look like a Snap Studio project"); return; }
         if (!loaded.projectName) loaded.projectName = 'Imported project';
+        if (!Array.isArray(loaded.layers)) loaded.layers = [];
         setData(d => ({ ...d, ...loaded }));
         toast('Project loaded');
       } catch (err) { toast('Could not read that file'); }
@@ -406,9 +484,46 @@ export default function Editor() {
             <input id="accent-color" type="color" value={data.color} onChange={e => set('color', e.target.value)} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
           </div>
 
+          <SectionHeader n="03" title="Layers" />
+          <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: -6, marginBottom: 10 }}>
+            Add unlimited free-floating text boxes on top of your card. Drag directly on the canvas to move, arrow keys to nudge, Delete to remove.
+          </p>
+          <button className="btn secondary" style={{ width: '100%', marginBottom: 10 }} onClick={addTextLayer}>+ Add text layer</button>
+          {data.layers.length === 0 && <p style={{ fontSize: 11, color: 'var(--rule-light)', marginBottom: 14 }}>No extra text layers yet.</p>}
+          {data.layers.map(l => (
+            <div key={l.id} className="card-panel" style={{ padding: 10, marginBottom: 8, border: selectedLayerId === l.id ? '1px solid var(--brass)' : '1px solid var(--rule)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: l.id === selectedLayerId ? 8 : 0 }}>
+                <span
+                  onClick={() => setSelectedLayerId(l.id)}
+                  style={{ flex: 1, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selectedLayerId === l.id ? 'var(--brass)' : 'var(--white)' }}
+                >
+                  {l.text || '(empty text)'}
+                </span>
+                <button className="btn secondary" aria-label={l.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => updateLayer(l.id, { visible: l.visible === false ? true : false })} style={{ padding: '4px 8px', fontSize: 11 }}>{l.visible === false ? '🙈' : '👁'}</button>
+                <button className="btn secondary" aria-label={l.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateLayer(l.id, { locked: !l.locked })} style={{ padding: '4px 8px', fontSize: 11 }}>{l.locked ? '🔒' : '🔓'}</button>
+                <button className="btn secondary" aria-label="Duplicate layer" onClick={() => duplicateLayer(l.id)} style={{ padding: '4px 8px', fontSize: 11 }}>⧉</button>
+                <button onClick={() => deleteLayer(l.id)} aria-label="Delete layer" style={{ background: 'none', border: 'none', color: 'var(--proof-red)', cursor: 'pointer', fontSize: 15, padding: '4px 6px' }}>×</button>
+              </div>
+              {selectedLayerId === l.id && (
+                <div>
+                  <div className="field"><label>Text</label><textarea rows={2} value={l.text} onChange={e => updateLayer(l.id, { text: e.target.value })} /></div>
+                  <Stepper label="Font size" value={l.fontSize} onChange={v => updateLayer(l.id, { fontSize: v })} min={10} max={90} step={2} unit="px" />
+                  <Stepper label="Rotation" value={l.rotation || 0} onChange={v => updateLayer(l.id, { rotation: v })} min={-180} max={180} step={5} unit="°" />
+                  <div className="field">
+                    <label>Color</label>
+                    <input type="color" value={l.color} onChange={e => updateLayer(l.id, { color: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+                  </div>
+                  <label className="checkline" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rule-light)' }}>
+                    <input type="checkbox" checked={!!l.bold} onChange={e => updateLayer(l.id, { bold: e.target.checked })} /> Bold
+                  </label>
+                </div>
+              )}
+            </div>
+          ))}
+
           {showBgFields && (
             <>
-              <SectionHeader n="03" title="Media" />
+              <SectionHeader n="04" title="Media" />
               <DropZone label="Background photo" accept="image/*" onFile={onUploadPhoto} hint="Drag & drop a photo, or click to choose" />
               <DropZone label="Your own video — play, scrub, then grab a frame" accept="video/*" onFile={onUploadVideo} hint="Drag & drop a video, or click to choose" />
               <div className="field">
@@ -471,7 +586,7 @@ export default function Editor() {
             </>
           )}
 
-          <SectionHeader n="04" title="Content" />
+          <SectionHeader n="05" title="Content" />
           {showNewsFields && (
             <>
               <div className="field"><label htmlFor="f-watermark">Watermark</label><input id="f-watermark" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
@@ -500,7 +615,7 @@ export default function Editor() {
             </>
           )}
 
-          <SectionHeader n="05" title="Polish" />
+          <SectionHeader n="06" title="Polish" />
           <button className="btn secondary" style={{ width: '100%', marginBottom: 8 }} onClick={checkGrammar}>{grammarChecking ? 'Checking...' : 'Check grammar & spelling'}</button>
           {grammarIssues && (
             <div style={{ marginBottom: 12, fontSize: 11.5 }} role="status">
@@ -514,7 +629,7 @@ export default function Editor() {
             </div>
           )}
 
-          <SectionHeader n="06" title="Export & Project" />
+          <SectionHeader n="07" title="Export & Project" />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
@@ -537,10 +652,18 @@ export default function Editor() {
             <div className="cm-tr" />
             <div className="cm-bl" />
             <div className="proof-stamp">{size.w}×{size.h} · {size.name}</div>
-            <div onMouseDown={startDrag} style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default' }}>
-              <CardCanvas ref={cardRef} data={{ ...data, ratioW: size.w, ratioH: size.h, brandLogo, showLogo }} />
+            <div onMouseDown={(e) => { startDrag(e); setSelectedLayerId(null); }} style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default' }}>
+              <CardCanvas
+                ref={cardRef}
+                data={{ ...data, ratioW: size.w, ratioH: size.h, brandLogo, showLogo }}
+                selectedLayerId={selectedLayerId}
+                onLayerMouseDown={onLayerMouseDown}
+              />
             </div>
           </div>
+          {data.layers.length > 0 && (
+            <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: 10 }}>Click a text layer to select it, drag to move, arrow keys to nudge, Delete to remove.</p>
+          )}
           {showBgFields && data.mediaType === 'image' && (
             <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: 10 }}>Click and drag the photo above to reposition it — same as the steppers, just faster.</p>
           )}

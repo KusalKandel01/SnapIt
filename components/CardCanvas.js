@@ -1,13 +1,14 @@
 import { forwardRef } from 'react';
 import { getDisplayDims } from '../lib/dims';
 
-const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
+const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLayerMouseDown }, ref) {
   const {
     layout, align, color, font, headSize, bodySize,
     bg, panX = 50, panY = 50, zoom = 100,
     watermark, kicker, headline, bannerLines, caption, cornerTag,
     quoteText, quoteAuthor, statNumber, statLabel, statDesc,
     brandLogo, showLogo,
+    layers = [],
     ratioW, ratioH
   } = data;
 
@@ -40,6 +41,31 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
     }} />
   ) : null;
 
+  // Freeform text layers — additive on top of whichever base layout is
+  // selected. Positions are stored as % of card width/height so they hold up
+  // across every platform aspect ratio, not just the one they were placed on.
+  const layersOverlay = layers.filter(l => l.visible !== false).map(l => (
+    <div
+      key={l.id}
+      onMouseDown={onLayerMouseDown ? (e) => onLayerMouseDown(e, l.id) : undefined}
+      style={{
+        position: 'absolute',
+        left: `${l.x}%`, top: `${l.y}%`,
+        transform: `translate(-50%, -50%) rotate(${l.rotation || 0}deg)`,
+        fontFamily: l.font || font, fontSize: l.fontSize || 24, color: l.color || '#ffffff',
+        opacity: l.opacity != null ? l.opacity : 1,
+        fontWeight: l.bold ? 700 : 400,
+        textAlign: 'center', whiteSpace: 'pre-wrap', maxWidth: '85%',
+        cursor: onLayerMouseDown ? (l.locked ? 'not-allowed' : 'grab') : 'default',
+        outline: selectedLayerId === l.id ? '1.5px dashed var(--brass)' : 'none',
+        outlineOffset: 4,
+        userSelect: 'none', zIndex: 6, textShadow: '0 1px 4px rgba(0,0,0,.5)'
+      }}
+    >
+      {l.text}
+    </div>
+  ));
+
   if (layout === 'dark') {
     return (
       <div ref={ref} style={wrapStyle}>
@@ -58,6 +84,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
           {cornerTag && <div style={{ marginTop: 10, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
         </div>
         {logoBadge}
+        {layersOverlay}
       </div>
     );
   }
@@ -81,6 +108,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
         </div>
         {cornerTag && <div style={{ marginTop: 14, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: color, textTransform: 'uppercase' }}>{cornerTag}</div>}
         {logoBadge}
+        {layersOverlay}
       </div>
     );
   }
@@ -95,6 +123,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
         <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--brass)' }}>&mdash; {quoteAuthor}</div>
         {cornerTag && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 16, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
         {logoBadge}
+        {layersOverlay}
       </div>
     );
   }
@@ -108,6 +137,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
       <div style={{ fontSize: bodySize, lineHeight: 1.6, color: 'rgba(255,255,255,.75)', maxWidth: '90%' }}>{statDesc}</div>
       {cornerTag && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 16, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
       {logoBadge}
+        {layersOverlay}
     </div>
   );
 });

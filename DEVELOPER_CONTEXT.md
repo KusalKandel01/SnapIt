@@ -117,11 +117,24 @@ Everything below shipped and is verified against a clean `npm run build`:
 - Keyboard accessibility pass: every button/input has proper labels or `aria-label`s, toggle button groups use `role="group"` + `aria-pressed`, a visible focus ring (`:focus-visible`) was added app-wide, error messages use `role="alert"`
 - Bonus fix while touching Brand Kit: the logo you import **now actually appears on the exported card** (a "Show logo on card" toggle appears in the Canvas section once a logo exists in Brand Kit) — this was flagged as the single worst gap in the original 100-issue review and had never been fixed until now
 
-## Phase 2+ roadmap — sequenced, with what each needs before code helps
+## Phase 2a — complete
+
+Multi-layer text system, additive on top of any of the 4 base layouts, verified against a clean build:
+- `data.layers`: array of `{ id, text, x, y, fontSize, color, rotation, opacity, bold, visible, locked }`, positions stored as **percent of card width/height** so a layer placed on a square card lands in the same relative spot if you switch to a Story or Pinterest ratio
+- **Backwards compatible on purpose**: `layers` defaults to `[]` in `DEFAULT_DATA`, `CardCanvas` destructures it with a `= []` fallback, and `loadProject()` force-fills it on any older saved JSON that predates this feature — old projects load exactly as before, nothing breaks
+- Add/duplicate/delete/hide/lock per layer, each with its own icon-button row in the Layers panel (section 03 in the Editor)
+- Click a layer to select it (shown with a dashed outline on canvas), edit its text/font size/rotation/color/bold inline
+- **Drag directly on the canvas** to reposition a layer, with center-snapping (within 3% of dead-center on either axis snaps to exactly 50%) — same interaction pattern as the existing background-image drag, extracted to work per-layer
+- **Keyboard**: arrow keys nudge the selected layer 1% (5% with Shift), Delete/Backspace removes it — explicitly skipped while focus is in any input/textarea so it never hijacks normal typing
+- Clicking empty canvas space deselects the current layer
+
+**Known scope boundary, stated honestly:** this is unlimited *text* layers, not yet image/shape/logo layers, resizing via drag handles, grouping, or blend modes — those are still Phase 2b+ per the roadmap below. Rotation, opacity, and lock/hide all work now; resize is font-size-driven rather than a drag handle (a real resize handle is a reasonable next increment if this interaction model proves out).
+
+## Phase 2b+ roadmap — sequenced, with what each needs before code helps
 
 This is the honest execution order. Each phase is scoped to be reviewable on its own, the way a real team would ship it — not all-at-once.
 
-**Phase 2a (next, no new infra needed):** Multi-text-box support on the canvas — this is the highest-leverage single upgrade from the original "layer-based editor" ask, and is achievable within the current architecture (React state array of text boxes instead of one fixed set of fields, each with x/y/rotation, rendered absolutely inside `CardCanvas`). Full layer system (shapes, grouping, blend modes, masking) is a much larger undertaking and should follow only after text-boxes prove the interaction model works.
+**Phase 2b (next, no new infra needed):** Image and shape layers using the same `layers` array (add a `type: 'image' | 'shape'` discriminant), plus real drag-handle resizing and simple rotation handles instead of stepper-only rotation. Grouping/blend modes are a bigger lift and should follow only once multi-type layers are solid.
 
 **Phase 3 (Typography):** letter-spacing, line-height, text stroke/shadow controls are straightforward additions to the same per-text-box model once Phase 2a exists. Curved/vertical text is a genuinely hard rendering problem (SVG `textPath` territory) — realistic, but should be scoped as its own increment, not bundled in.
 

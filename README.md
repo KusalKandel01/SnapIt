@@ -5,11 +5,10 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 ## What's included
 
 - `pages/index.js` — dashboard
-- `pages/editor.js` — the main card builder: 4 layouts (Dark Alert, Light Card, Quote, Stat), platform sizes, text-size sliders, image pan/zoom, video upload/URL with in-app preview and frame capture, stock photo search, grammar check, version history, export, save/load
+- `pages/editor.js` — the main card builder: 4 layouts (Dark Alert, Light Card, Quote, Stat), unlimited text/image layers, platform sizes, +/- steppers for every size control, drag-and-drop uploads, video frame capture, stock photo search, emoji picker, customizable photo fade + page color, version history, batch export, save/load
 - `pages/templates.js` — 23 starting points across Nepal-specific occasions and worldwide formats
 - `pages/brand.js` — logo + brand name (saved in your browser)
 - `pages/api/stock.js` — server-side proxy to Unsplash (keeps your key private)
-- `pages/api/grammar.js` — server-side proxy to LanguageTool's public grammar API
 - `lib/platformSizes.js` — the full list of platform sizes; add more here any time
 - `components/CardCanvas.js` — the actual card renderer
 - `components/useAutosave.js` — debounced, timestamped autosave to `localStorage` — every edit is saved, nothing is lost on refresh or accidental close
@@ -17,10 +16,6 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 ## Autosave & version history
 
 Every change you make is saved locally (in your browser) about a second after you stop typing, timestamped. The "Version history" button in the Editor lists every saved snapshot by date and time — click one to restore it. Reopening the Editor after closing the tab automatically picks up your most recent save. This is separate from "Save as file" / "Load a file," which export/import a single project as a portable `.json` you can hand to someone else or keep permanently outside the browser.
-
-## Grammar check
-
-Click "Check grammar & spelling" in the Editor to run your headline, banner lines, caption, quote, and stat description through LanguageTool's public API. It lists issues with suggested fixes — nothing is auto-replaced, you choose what to apply. The public endpoint is fine for personal use; for heavy/production traffic, get a LanguageTool API key or self-host it and swap the URL in `pages/api/grammar.js`.
 
 ## Run it locally
 

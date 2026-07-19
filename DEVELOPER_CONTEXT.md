@@ -92,7 +92,21 @@ These were explicitly requested during development and explicitly refused. If as
 2. **Scrape competitors' content and social media users' data, presented as original ("live updates," "like we are the one doing all it").** Republishing competitors' work as your own is copyright infringement/plagiarism. Scraping other people's social accounts violates essentially every platform's Terms of Service and is a real privacy problem. The sanctioned alternative, if ever wanted: an RSS aggregator that shows public headlines/links with visible attribution back to the source — inspiration, not theft. Not yet built.
 3. **Generic "download video/image from any platform" ingestion.** Breaks most platforms' ToS and is copyright-risky at the mechanism level, regardless of the user's actual intent. What *is* built: upload your own video file or paste a direct (CORS-open) video URL and grab a still frame from it — legitimate because it's the user's own media.
 
-## Real bugs found and fixed (chronological — useful for understanding *why* code looks the way it does)
+## Real bug found and fixed via actual exported output (not assumption)
+
+The user exported real cards at multiple platform sizes and sent back the actual PNGs, which is how this was caught — a visual defect that a clean build can never reveal:
+
+- **Background photo letterboxing on tall ratios.** `bgStyle` set `backgroundSize: '${zoom}%'` — a single CSS `background-size` value only sets width; height defaults to `auto`. On Square (1:1) this was invisible. On Story/TikTok (1080×1920), a normally-proportioned photo's auto-height fell well short of the frame, leaving a visible solid-color gap (mostly hidden at the bottom by the dark fade gradient already being opaque there, but plainly visible at the top where the fade is still near-transparent). **Fixed** by switching the base fit to `background-size: cover` (always fills the box regardless of aspect ratio) and moving "zoom" to a separate `transform: scale()` applied on top — so 100% zoom now means "fully covered, no gap" instead of "actual pixel size." Lesson for future work: a clean `npm run build` and even a correct-looking Square preview do not guarantee correctness at other aspect ratios — when in doubt, check the actual exported file at the extreme ratios (very tall, very wide), not just the default square.
+
+## Emoji support
+
+Added `components/EmojiPicker.js` — a small curated grid (no external dependency, no API call), wired into Kicker, Headline, Caption, Quote text, Stat description, and every text layer. Appends to the end of the field's current value on click. Plain text inputs already supported emoji via normal typing/OS emoji keyboards regardless — this adds a discoverable in-app picker for people who don't know their OS shortcut (Win+. / Cmd+Ctrl+Space).
+
+## Grammar check — removed
+
+Per explicit request. `pages/api/grammar.js` deleted, the "Polish" section and all related state (`grammarIssues`, `grammarChecking`, `checkGrammar()`) removed from `editor.js`, README updated. If this is ever wanted back, it's a clean re-add: proxy pattern to LanguageTool (or any grammar API) exactly like `pages/api/stock.js` proxies Unsplash — same shape, different upstream.
+
+## Earlier bugs found and fixed (chronological)
 
 - Template thumbnail sizing used different math than the actual card renderer → thumbnails overflowed/clipped. Fixed by extracting `lib/dims.js` as the single shared source both `CardCanvas.js` and `templates.js` call.
 - `CardCanvas`'s display size had no max-height clamp → extreme ratios (Pinterest 2:3, X headers 3:1) rendered broken/squashed previews. Fixed in the same `dims.js` extraction.

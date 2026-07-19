@@ -30,11 +30,20 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
     background: resolvedPageColor
   };
 
+  // FIXED: previously `backgroundSize: zoom%` set only the image's WIDTH
+  // (a single CSS background-size value never sets height), so on tall
+  // ratios like Story/TikTok (1080x1920) a normally-proportioned photo left
+  // a visible black gap where its un-stretched height fell short of the
+  // frame. `cover` always fills the box regardless of aspect ratio; the
+  // zoom control is now a separate transform:scale on top of that base fit,
+  // so "100% zoom" means "fully covered, no gap" instead of "actual size."
   const bgStyle = {
     backgroundImage: `url('${bg}')`,
-    backgroundSize: `${zoom}%`,
+    backgroundSize: 'cover',
     backgroundPosition: `${panX}% ${panY}%`,
-    backgroundRepeat: 'no-repeat'
+    backgroundRepeat: 'no-repeat',
+    transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
+    transformOrigin: 'center'
   };
 
   // Customizable fade — replaces the old hardcoded black gradient. Pick any

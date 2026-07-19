@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import CardCanvas from '../components/CardCanvas';
 import Stepper from '../components/Stepper';
+import EmojiPicker from '../components/EmojiPicker';
 import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
 import { useAutosave, readDraft } from '../components/useAutosave';
@@ -61,8 +62,6 @@ export default function Editor() {
   const [stockLoading, setStockLoading] = useState(false);
   const [mediaUrlInput, setMediaUrlInput] = useState('');
   const [mediaUrlError, setMediaUrlError] = useState('');
-  const [grammarIssues, setGrammarIssues] = useState(null);
-  const [grammarChecking, setGrammarChecking] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [batchExporting, setBatchExporting] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -99,6 +98,10 @@ export default function Editor() {
   useEffect(() => { if (editingName) nameInputRef.current?.focus(); }, [editingName]);
 
   const set = (key, val) => setData(d => ({ ...d, [key]: val }));
+  const appendEmoji = (key, emoji) => setData(d => ({ ...d, [key]: (d[key] || '') + emoji }));
+  const appendEmojiToLayer = (layerId, emoji) => setData(d => ({
+    ...d, layers: d.layers.map(l => l.id === layerId ? { ...l, text: (l.text || '') + emoji } : l)
+  }));
   const size = findSize(data.sizeId);
 
   function restoreVersion(ts) {
@@ -323,19 +326,6 @@ export default function Editor() {
     } catch (err) {
       setMediaUrlError('This video source blocks frame capture (cross-origin protection most platforms enforce). Try uploading the video file instead.');
     }
-  }
-
-  async function checkGrammar() {
-    const combined = [data.headline, data.bannerLines, data.caption, data.quoteText, data.statDesc].filter(Boolean).join('\n');
-    if (!combined.trim()) { toast('Nothing to check yet'); return; }
-    setGrammarChecking(true);
-    try {
-      const res = await fetch('/api/grammar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: combined }) });
-      const json = await res.json();
-      if (json.error) toast(json.error);
-      else { setGrammarIssues(json.issues); toast(json.issues.length ? `${json.issues.length} suggestion(s) found` : 'No issues found — looks good'); }
-    } catch (err) { toast('Grammar check failed — check your connection'); }
-    setGrammarChecking(false);
   }
 
   async function exportImage(format) {
@@ -571,7 +561,13 @@ export default function Editor() {
               )}
               {selectedLayerId === l.id && l.type !== 'image' && (
                 <div>
-                  <div className="field"><label>Text</label><textarea rows={2} value={l.text} onChange={e => updateLayer(l.id, { text: e.target.value })} /></div>
+                  <div className="field">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <label style={{ marginBottom: 0 }}>Text</label>
+                      <EmojiPicker onSelect={e => appendEmojiToLayer(l.id, e)} />
+                    </div>
+                    <textarea rows={2} value={l.text} onChange={e => updateLayer(l.id, { text: e.target.value })} />
+                  </div>
                   <Stepper label="Font size" value={l.fontSize} onChange={v => updateLayer(l.id, { fontSize: v })} min={10} max={90} step={2} unit="px" />
                   <Stepper label="Box width" value={l.width || 85} onChange={v => updateLayer(l.id, { width: v })} min={10} max={100} step={5} unit="%" />
                   <Stepper label="Rotation" value={l.rotation || 0} onChange={v => updateLayer(l.id, { rotation: v })} min={-180} max={180} step={5} unit="°" />
@@ -656,17 +652,41 @@ export default function Editor() {
           {showNewsFields && (
             <>
               <div className="field"><label htmlFor="f-watermark">Watermark</label><input id="f-watermark" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
-              <div className="field"><label htmlFor="f-kicker">Kicker</label><input id="f-kicker" type="text" value={data.kicker} onChange={e => set('kicker', e.target.value)} /></div>
-              <div className="field"><label htmlFor="f-headline">Headline</label><textarea id="f-headline" rows={2} value={data.headline} onChange={e => set('headline', e.target.value)} /></div>
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="f-kicker" style={{ marginBottom: 0 }}>Kicker</label>
+                  <EmojiPicker onSelect={e => appendEmoji('kicker', e)} />
+                </div>
+                <input id="f-kicker" type="text" value={data.kicker} onChange={e => set('kicker', e.target.value)} />
+              </div>
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="f-headline" style={{ marginBottom: 0 }}>Headline</label>
+                  <EmojiPicker onSelect={e => appendEmoji('headline', e)} />
+                </div>
+                <textarea id="f-headline" rows={2} value={data.headline} onChange={e => set('headline', e.target.value)} />
+              </div>
               <div className="field"><label htmlFor="f-banner">Banner sub-lines (one per line)</label><textarea id="f-banner" rows={2} value={data.bannerLines} onChange={e => set('bannerLines', e.target.value)} /></div>
-              <div className="field"><label htmlFor="f-caption">Caption</label><textarea id="f-caption" rows={3} value={data.caption} onChange={e => set('caption', e.target.value)} /></div>
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="f-caption" style={{ marginBottom: 0 }}>Caption</label>
+                  <EmojiPicker onSelect={e => appendEmoji('caption', e)} />
+                </div>
+                <textarea id="f-caption" rows={3} value={data.caption} onChange={e => set('caption', e.target.value)} />
+              </div>
               <div className="field"><label htmlFor="f-corner">Corner tag</label><input id="f-corner" type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
             </>
           )}
           {showQuoteFields && (
             <>
               <div className="field"><label htmlFor="f-watermark2">Watermark</label><input id="f-watermark2" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
-              <div className="field"><label htmlFor="f-quote">Quote text</label><textarea id="f-quote" rows={3} value={data.quoteText} onChange={e => set('quoteText', e.target.value)} /></div>
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="f-quote" style={{ marginBottom: 0 }}>Quote text</label>
+                  <EmojiPicker onSelect={e => appendEmoji('quoteText', e)} />
+                </div>
+                <textarea id="f-quote" rows={3} value={data.quoteText} onChange={e => set('quoteText', e.target.value)} />
+              </div>
               <div className="field"><label htmlFor="f-author">Author / attribution</label><input id="f-author" type="text" value={data.quoteAuthor} onChange={e => set('quoteAuthor', e.target.value)} /></div>
               <div className="field"><label htmlFor="f-corner2">Corner tag</label><input id="f-corner2" type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
             </>
@@ -676,26 +696,18 @@ export default function Editor() {
               <div className="field"><label htmlFor="f-watermark3">Watermark</label><input id="f-watermark3" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
               <div className="field"><label htmlFor="f-statnum">Stat number</label><input id="f-statnum" type="text" value={data.statNumber} onChange={e => set('statNumber', e.target.value)} /></div>
               <div className="field"><label htmlFor="f-statlabel">Stat label</label><input id="f-statlabel" type="text" value={data.statLabel} onChange={e => set('statLabel', e.target.value)} /></div>
-              <div className="field"><label htmlFor="f-statdesc">Description</label><textarea id="f-statdesc" rows={2} value={data.statDesc} onChange={e => set('statDesc', e.target.value)} /></div>
+              <div className="field">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label htmlFor="f-statdesc" style={{ marginBottom: 0 }}>Description</label>
+                  <EmojiPicker onSelect={e => appendEmoji('statDesc', e)} />
+                </div>
+                <textarea id="f-statdesc" rows={2} value={data.statDesc} onChange={e => set('statDesc', e.target.value)} />
+              </div>
               <div className="field"><label htmlFor="f-corner3">Corner tag</label><input id="f-corner3" type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
             </>
           )}
 
-          <SectionHeader n="06" title="Polish" />
-          <button className="btn secondary" style={{ width: '100%', marginBottom: 8 }} onClick={checkGrammar}>{grammarChecking ? 'Checking...' : 'Check grammar & spelling'}</button>
-          {grammarIssues && (
-            <div style={{ marginBottom: 12, fontSize: 11.5 }} role="status">
-              {grammarIssues.length === 0 && <p style={{ color: 'var(--rule-light)' }}>No issues found.</p>}
-              {grammarIssues.map((iss, i) => (
-                <div key={i} style={{ padding: '6px 8px', background: 'var(--ink)', borderRadius: 6, marginBottom: 5 }}>
-                  <strong style={{ color: '#ff9c9c' }}>&ldquo;{iss.snippet}&rdquo;</strong> — {iss.message}
-                  {iss.suggestions.length > 0 && <div style={{ color: 'var(--brass)', marginTop: 2 }}>Try: {iss.suggestions.join(', ')}</div>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <SectionHeader n="07" title="Export & Project" />
+          <SectionHeader n="06" title="Export & Project" />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>

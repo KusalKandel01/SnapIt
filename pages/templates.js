@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
 import CardCanvas from '../components/CardCanvas';
@@ -70,6 +71,18 @@ const GROUPS = [
 
 export default function Templates() {
   const router = useRouter();
+  const [query, setQuery] = useState('');
+
+  const filteredGroups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return GROUPS;
+    return GROUPS
+      .map(g => ({ ...g, items: g.items.filter(it => it.name.toLowerCase().includes(q) || g.label.toLowerCase().includes(q)) }))
+      .filter(g => g.items.length > 0);
+  }, [query]);
+
+  const totalCount = GROUPS.reduce((n, g) => n + g.items.length, 0);
+  const shownCount = filteredGroups.reduce((n, g) => n + g.items.length, 0);
 
   function usePreset(item) {
     sessionStorage.setItem('snapstudio:preset', JSON.stringify(item.data));
@@ -81,7 +94,17 @@ export default function Templates() {
       <h1 className="page-title">Templates</h1>
       <p className="page-sub">Click a template to load it straight into the Editor, then customize freely. Nepal-specific occasions and worldwide formats, side by side.</p>
 
-      {GROUPS.map(group => (
+      <div className="field" style={{ maxWidth: 360, marginBottom: 24 }}>
+        <label htmlFor="template-search">Search templates</label>
+        <input id="template-search" type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="e.g. birthday, breaking, dashain..." />
+        {query && <p className="spec-tag" style={{ marginTop: 6 }}>{shownCount} of {totalCount} templates match</p>}
+      </div>
+
+      {filteredGroups.length === 0 && (
+        <p style={{ color: 'var(--rule-light)' }}>No templates match &ldquo;{query}&rdquo;.</p>
+      )}
+
+      {filteredGroups.map(group => (
         <div key={group.label} style={{ marginBottom: 30 }}>
           <h2 style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 17, color: 'var(--brass)', marginBottom: 14 }}>{group.label}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 18 }}>

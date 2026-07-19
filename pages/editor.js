@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
 import CardCanvas from '../components/CardCanvas';
+import Stepper from '../components/Stepper';
+import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
-import { useAutosave } from '../components/useAutosave';
+import { useAutosave, readDraft } from '../components/useAutosave';
 import { PLATFORM_GROUPS, findSize } from '../lib/platformSizes';
 
 const DEFAULT_DATA = {
+  projectName: 'Untitled project',
   layout: 'dark',
   align: 'center',
   color: '#cf1b2b',
@@ -37,9 +40,21 @@ const FONTS = [
   { label: 'Poppins', value: "'Poppins',sans-serif" }
 ];
 
+function SectionHeader({ n, title }) {
+  return (
+    <div className="section-header">
+      <span className="num">{n}</span>
+      <span className="title">{title}</span>
+      <span className="rule" />
+    </div>
+  );
+}
+
 export default function Editor() {
   const [data, setData] = useState(DEFAULT_DATA);
   const [loadedPreset, setLoadedPreset] = useState(false);
+  const [brandLogo, setBrandLogo] = useState('');
+  const [showLogo, setShowLogo] = useState(false);
   const [stockQuery, setStockQuery] = useState('');
   const [stockResults, setStockResults] = useState([]);
   const [stockLoading, setStockLoading] = useState(false);
@@ -49,14 +64,17 @@ export default function Editor() {
   const [grammarChecking, setGrammarChecking] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [batchExporting, setBatchExporting] = useState(false);
+  const [editingName, setEditingName] = useState(false);
   const dragState = useRef(null);
   const cardRef = useRef(null);
   const videoPreviewRef = useRef(null);
+  const nameInputRef = useRef(null);
   const { toast, ToastEl } = useToast();
-  const { history, formatTs } = useAutosave(data, !loadedPreset);
+  const { history, deleteVersion, saveVersionNow, formatTs } = useAutosave(data, !loadedPreset);
 
-  // Load a template preset if one was set, otherwise restore the most
-  // recent autosave so a refresh or accidental close never loses work.
+  // Load a template preset if one was set, otherwise restore the continuous
+  // draft — this is the "never lose progress" guarantee, separate from the
+  // once-per-10-minutes named version history below.
   useEffect(() => {
     try {
       const preset = sessionStorage.getItem('snapstudio:preset');
@@ -64,19 +82,25 @@ export default function Editor() {
         setData(d => ({ ...d, ...JSON.parse(preset) }));
         sessionStorage.removeItem('snapstudio:preset');
       } else {
-        const saved = JSON.parse(localStorage.getItem('snapstudio:history') || '[]');
-        if (saved.length > 0) setData(d => ({ ...d, ...saved[0].data }));
+        const draft = readDraft();
+        if (draft) setData(d => ({ ...d, ...draft }));
       }
     } catch (e) {}
     setLoadedPreset(true);
+    try {
+      const brand = JSON.parse(localStorage.getItem('snapstudio:brand') || '{}');
+      if (brand.logo) setBrandLogo(brand.logo);
+    } catch (e) {}
   }, []);
+
+  useEffect(() => { if (editingName) nameInputRef.current?.focus(); }, [editingName]);
 
   const set = (key, val) => setData(d => ({ ...d, [key]: val }));
   const size = findSize(data.sizeId);
 
   function restoreVersion(ts) {
     const found = history.find(h => h.ts === ts);
-    if (found) { setData(d => ({ ...d, ...found.data })); toast(`Restored version from ${formatTs(ts)}`); setShowHistory(false); }
+    if (found) { setData(d => ({ ...d, ...found.data })); toast(`Restored "${found.data.projectName || 'version'}" from ${formatTs(ts)}`); setShowHistory(false); }
   }
 
   async function searchStock(e) {
@@ -99,11 +123,7 @@ export default function Editor() {
     if (!(data.mediaType === 'image') || !(data.layout === 'dark' || data.layout === 'light')) return;
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
-    dragState.current = {
-      startX: e.clientX, startY: e.clientY,
-      startPanX: data.panX, startPanY: data.panY,
-      rectW: rect.width, rectH: rect.height
-    };
+    dragState.current = { startX: e.clientX, startY: e.clientY, startPanX: data.panX, startPanY: data.panY, rectW: rect.width, rectH: rect.height };
     window.addEventListener('mousemove', onDragMove);
     window.addEventListener('mouseup', onDragEnd);
   }
@@ -121,12 +141,6 @@ export default function Editor() {
     window.removeEventListener('mouseup', onDragEnd);
   }
 
-  // Same content, every platform's real size, one click. Naively rescaling
-  // whatever's currently on screen would just stretch a square into a
-  // portrait/landscape box — html2canvas's `scale` option only magnifies
-  // uniformly, it can't reshape an aspect ratio. So this actually switches
-  // the live sizeId, waits for the real re-render at that ratio, captures,
-  // then moves to the next — and restores your original size afterward.
   function waitForFrame() { return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }
 
   async function exportAllPlatforms() {
@@ -155,7 +169,7 @@ export default function Editor() {
       }
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const link = document.createElement('a');
-      link.download = 'snap-card-all-platforms.zip';
+      link.download = `${slugify(data.projectName)}-all-platforms.zip`;
       link.href = URL.createObjectURL(zipBlob);
       link.click();
       toast('All platform sizes exported');
@@ -166,9 +180,11 @@ export default function Editor() {
     setBatchExporting(false);
   }
 
-  function onUploadPhoto(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+  function slugify(name) {
+    return (name || 'snap-project').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'snap-project';
+  }
+
+  function onUploadPhoto(file) {
     const reader = new FileReader();
     reader.onload = ev => { set('mediaType', 'image'); set('bg', ev.target.result); resetFraming(); };
     reader.readAsDataURL(file);
@@ -191,9 +207,7 @@ export default function Editor() {
     toast('Video loaded for in-app preview — captures a still frame on export');
   }
 
-  function onUploadVideo(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+  function onUploadVideo(file) {
     const url = URL.createObjectURL(file);
     set('mediaType', 'video');
     set('videoUrl', url);
@@ -222,9 +236,7 @@ export default function Editor() {
     if (!combined.trim()) { toast('Nothing to check yet'); return; }
     setGrammarChecking(true);
     try {
-      const res = await fetch('/api/grammar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: combined })
-      });
+      const res = await fetch('/api/grammar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: combined }) });
       const json = await res.json();
       if (json.error) toast(json.error);
       else { setGrammarIssues(json.issues); toast(json.issues.length ? `${json.issues.length} suggestion(s) found` : 'No issues found — looks good'); }
@@ -238,7 +250,7 @@ export default function Editor() {
     const scale = size.w / node.getBoundingClientRect().width;
     const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
     const link = document.createElement('a');
-    link.download = `snap-card.${format}`;
+    link.download = `${slugify(data.projectName)}.${format}`;
     link.href = canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png', 0.95);
     link.click();
     toast('Image downloaded');
@@ -259,7 +271,7 @@ export default function Editor() {
   function saveProject() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
-    link.download = `snap-project-${new Date().toISOString().slice(0,10)}.json`;
+    link.download = `${slugify(data.projectName)}.json`;
     link.href = URL.createObjectURL(blob);
     link.click();
     toast('Project saved as a file');
@@ -272,7 +284,10 @@ export default function Editor() {
     reader.onload = ev => {
       try {
         const loaded = JSON.parse(ev.target.result);
+        // Backwards compatible: older saved projects won't have projectName —
+        // give them one instead of leaving the field blank/undefined.
         if (typeof loaded !== 'object' || !loaded.layout) { toast("That file doesn't look like a Snap Studio project"); return; }
+        if (!loaded.projectName) loaded.projectName = 'Imported project';
         setData(d => ({ ...d, ...loaded }));
         toast('Project loaded');
       } catch (err) { toast('Could not read that file'); }
@@ -287,18 +302,49 @@ export default function Editor() {
 
   return (
     <Layout>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 className="page-title">Editor</h1>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={data.projectName}
+              onChange={e => set('projectName', e.target.value)}
+              onBlur={() => setEditingName(false)}
+              onKeyDown={e => { if (e.key === 'Enter') setEditingName(false); }}
+              aria-label="Project name"
+              style={{
+                fontFamily: 'var(--font-display)', fontStyle: 'italic', fontWeight: 600, fontSize: 28,
+                background: 'transparent', border: 'none', borderBottom: '1px solid var(--brass)', color: 'var(--white)',
+                outline: 'none', padding: 0, marginBottom: 6, width: '100%', maxWidth: 420
+              }}
+            />
+          ) : (
+            <h1 className="page-title" onClick={() => setEditingName(true)} style={{ cursor: 'text' }} title="Click to rename">
+              {data.projectName} <span style={{ fontSize: 13, color: 'var(--rule-light)', fontFamily: 'var(--font-mono)', fontStyle: 'normal' }}>✎ rename</span>
+            </h1>
+          )}
           <p className="page-sub">Build one card, pick a platform size, export or copy it straight to your clipboard. Every change autosaves — closing the tab never loses your work.</p>
         </div>
-        <div style={{ position: 'relative' }}>
-          <button className="btn secondary" onClick={() => setShowHistory(s => !s)}>Version history ({history.length})</button>
+        <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
+          <button className="btn secondary" onClick={() => { saveVersionNow(data); toast('Version saved now'); }}>Save version now</button>
+          <button className="btn secondary" onClick={() => setShowHistory(s => !s)} aria-expanded={showHistory} aria-haspopup="true">
+            Version history ({history.length})
+          </button>
           {showHistory && (
-            <div className="history-panel">
-              {history.length === 0 && <div className="history-empty">No saved versions yet — keep editing.</div>}
+            <div className="history-panel" role="menu">
+              {history.length === 0 && <div className="history-empty">No saved versions yet — one saves automatically every 10 minutes, or use &ldquo;Save version now.&rdquo;</div>}
               {history.map(h => (
-                <div key={h.ts} className="history-item" onClick={() => restoreVersion(h.ts)}>{formatTs(h.ts)}</div>
+                <div key={h.ts} className="history-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <span onClick={() => restoreVersion(h.ts)} style={{ cursor: 'pointer', flex: 1 }}>
+                    {h.data.projectName || 'Untitled'} — {formatTs(h.ts)}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteVersion(h.ts); toast('Version deleted'); }}
+                    aria-label={`Delete version from ${formatTs(h.ts)}`}
+                    style={{ background: 'none', border: 'none', color: 'var(--proof-red)', cursor: 'pointer', fontSize: 14, padding: '2px 6px' }}
+                  >×</button>
+                </div>
               ))}
             </div>
           )}
@@ -307,9 +353,11 @@ export default function Editor() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24 }}>
         <div className="card-panel" style={{ maxHeight: '84vh', overflowY: 'auto' }}>
+
+          <SectionHeader n="01" title="Canvas" />
           <div className="field">
-            <label>Platform size</label>
-            <select value={data.sizeId} onChange={e => set('sizeId', e.target.value)}>
+            <label htmlFor="platform-size">Platform size</label>
+            <select id="platform-size" value={data.sizeId} onChange={e => set('sizeId', e.target.value)}>
               {PLATFORM_GROUPS.map(g => (
                 <optgroup key={g.label} label={g.label}>
                   {g.sizes.map(s => <option key={s.id} value={s.id}>{s.name} ({s.w}×{s.h})</option>)}
@@ -317,66 +365,60 @@ export default function Editor() {
               ))}
             </select>
           </div>
-
           <div className="field">
-            <label>Layout</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <button className={`btn ${data.layout === 'dark' ? '' : 'secondary'}`} onClick={() => set('layout', 'dark')}>Dark Alert</button>
-              <button className={`btn ${data.layout === 'light' ? '' : 'secondary'}`} onClick={() => set('layout', 'light')}>Light Card</button>
-              <button className={`btn ${data.layout === 'quote' ? '' : 'secondary'}`} onClick={() => set('layout', 'quote')}>Quote</button>
-              <button className={`btn ${data.layout === 'stat' ? '' : 'secondary'}`} onClick={() => set('layout', 'stat')}>Stat</button>
+            <label id="layout-label">Layout</label>
+            <div role="group" aria-labelledby="layout-label" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button className={`btn ${data.layout === 'dark' ? '' : 'secondary'}`} aria-pressed={data.layout === 'dark'} onClick={() => set('layout', 'dark')}>Dark Alert</button>
+              <button className={`btn ${data.layout === 'light' ? '' : 'secondary'}`} aria-pressed={data.layout === 'light'} onClick={() => set('layout', 'light')}>Light Card</button>
+              <button className={`btn ${data.layout === 'quote' ? '' : 'secondary'}`} aria-pressed={data.layout === 'quote'} onClick={() => set('layout', 'quote')}>Quote</button>
+              <button className={`btn ${data.layout === 'stat' ? '' : 'secondary'}`} aria-pressed={data.layout === 'stat'} onClick={() => set('layout', 'stat')}>Stat</button>
             </div>
           </div>
-
           {(data.layout === 'dark' || data.layout === 'light') && (
             <div className="field">
-              <label>Text alignment</label>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className={`btn ${data.align === 'center' ? '' : 'secondary'}`} onClick={() => set('align', 'center')}>Centered</button>
-                <button className={`btn ${data.align === 'left' ? '' : 'secondary'}`} onClick={() => set('align', 'left')}>Left</button>
+              <label id="align-label">Text alignment</label>
+              <div role="group" aria-labelledby="align-label" style={{ display: 'flex', gap: 8 }}>
+                <button className={`btn ${data.align === 'center' ? '' : 'secondary'}`} aria-pressed={data.align === 'center'} onClick={() => set('align', 'center')}>Centered</button>
+                <button className={`btn ${data.align === 'left' ? '' : 'secondary'}`} aria-pressed={data.align === 'left'} onClick={() => set('align', 'left')}>Left</button>
               </div>
             </div>
           )}
+          {brandLogo && (
+            <label className="checkline" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rule-light)', marginBottom: 14 }}>
+              <input type="checkbox" checked={showLogo} onChange={e => setShowLogo(e.target.checked)} /> Show logo on card
+            </label>
+          )}
+          {!brandLogo && (
+            <p style={{ fontSize: 11, color: 'var(--rule-light)', marginBottom: 14 }}>No logo set yet — add one in <a href="/brand" style={{ color: 'var(--brass)' }}>Brand Kit</a> to show it on your cards.</p>
+          )}
 
+          <SectionHeader n="02" title="Typography & Color" />
           <div className="field">
-            <label>Font</label>
-            <select value={data.font} onChange={e => set('font', e.target.value)}>
+            <label htmlFor="font-select">Font</label>
+            <select id="font-select" value={data.font} onChange={e => set('font', e.target.value)}>
               {FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
           </div>
-
+          <Stepper label="Headline size" value={data.headSize} onChange={v => set('headSize', v)} min={16} max={60} step={2} unit="px" />
+          <Stepper label="Body text size" value={data.bodySize} onChange={v => set('bodySize', v)} min={9} max={20} step={1} unit="px" />
           <div className="field">
-            <label>Headline size — {data.headSize}px</label>
-            <input type="range" min="16" max="60" value={data.headSize} onChange={e => set('headSize', +e.target.value)} style={{ width: '100%' }} />
-          </div>
-          <div className="field">
-            <label>Body text size — {data.bodySize}px</label>
-            <input type="range" min="9" max="20" value={data.bodySize} onChange={e => set('bodySize', +e.target.value)} style={{ width: '100%' }} />
-          </div>
-
-          <div className="field">
-            <label>Accent color</label>
-            <input type="color" value={data.color} onChange={e => set('color', e.target.value)} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+            <label htmlFor="accent-color">Accent color</label>
+            <input id="accent-color" type="color" value={data.color} onChange={e => set('color', e.target.value)} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
           </div>
 
           {showBgFields && (
             <>
+              <SectionHeader n="03" title="Media" />
+              <DropZone label="Background photo" accept="image/*" onFile={onUploadPhoto} hint="Drag & drop a photo, or click to choose" />
+              <DropZone label="Your own video — play, scrub, then grab a frame" accept="video/*" onFile={onUploadVideo} hint="Drag & drop a video, or click to choose" />
               <div className="field">
-                <label>Background photo — upload</label>
-                <input type="file" accept="image/*" onChange={onUploadPhoto} />
-              </div>
-              <div className="field">
-                <label>Or your own video — play, scrub, then grab a frame</label>
-                <input type="file" accept="video/*" onChange={onUploadVideo} />
-              </div>
-              <div className="field">
-                <label>Or paste an image / direct video URL</label>
-                <input type="text" value={mediaUrlInput} onChange={e => setMediaUrlInput(e.target.value)} placeholder="https://..." />
+                <label htmlFor="media-url">Or paste an image / direct video URL</label>
+                <input id="media-url" type="text" value={mediaUrlInput} onChange={e => setMediaUrlInput(e.target.value)} placeholder="https://..." />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
                   <button className="btn secondary" onClick={useMediaUrlAsImage}>Use as image</button>
                   <button className="btn secondary" onClick={useMediaUrlAsVideo}>Load as video</button>
                 </div>
-                {mediaUrlError && <p style={{ color: '#ff9c9c', fontSize: 11, marginTop: 6 }}>{mediaUrlError}</p>}
+                {mediaUrlError && <p role="alert" style={{ color: '#ff9c9c', fontSize: 11, marginTop: 6 }}>{mediaUrlError}</p>}
               </div>
 
               {data.mediaType === 'video' && data.videoUrl && (
@@ -391,20 +433,18 @@ export default function Editor() {
               {data.mediaType === 'image' && (
                 <div className="field">
                   <label>Position &amp; zoom (fixes cropping when you switch platform size)</label>
-                  <div style={{ fontSize: 10.5, color: 'var(--rule-light)', marginBottom: 4 }}>Horizontal — {data.panX}%</div>
-                  <input type="range" min="0" max="100" value={data.panX} onChange={e => set('panX', +e.target.value)} style={{ width: '100%' }} />
-                  <div style={{ fontSize: 10.5, color: 'var(--rule-light)', margin: '6px 0 4px' }}>Vertical — {data.panY}%</div>
-                  <input type="range" min="0" max="100" value={data.panY} onChange={e => set('panY', +e.target.value)} style={{ width: '100%' }} />
-                  <div style={{ fontSize: 10.5, color: 'var(--rule-light)', margin: '6px 0 4px' }}>Zoom — {data.zoom}%</div>
-                  <input type="range" min="100" max="250" value={data.zoom} onChange={e => set('zoom', +e.target.value)} style={{ width: '100%' }} />
+                  <p style={{ fontSize: 10.5, color: 'var(--rule-light)', margin: '0 0 8px 0' }}>Tip: you can also click and drag the photo directly in the preview.</p>
+                  <Stepper label="Horizontal" value={data.panX} onChange={v => set('panX', v)} min={0} max={100} step={5} unit="%" />
+                  <Stepper label="Vertical" value={data.panY} onChange={v => set('panY', v)} min={0} max={100} step={5} unit="%" />
+                  <Stepper label="Zoom" value={data.zoom} onChange={v => set('zoom', v)} min={100} max={250} step={10} unit="%" />
                   <button className="btn secondary" style={{ marginTop: 6 }} onClick={resetFraming}>Reset position &amp; zoom</button>
                 </div>
               )}
 
               <div className="field">
-                <label>Search free HQ stock photos (Unsplash)</label>
+                <label htmlFor="stock-search">Search free HQ stock photos (Unsplash)</label>
                 <form onSubmit={searchStock} style={{ display: 'flex', gap: 6 }}>
-                  <input type="text" value={stockQuery} onChange={e => setStockQuery(e.target.value)} placeholder="e.g. city skyline" />
+                  <input id="stock-search" type="text" value={stockQuery} onChange={e => setStockQuery(e.target.value)} placeholder="e.g. city skyline" />
                   <button className="btn secondary" type="submit">{stockLoading ? '...' : 'Search'}</button>
                 </form>
                 {stockResults.length > 0 && (
@@ -412,9 +452,11 @@ export default function Editor() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginTop: 8 }}>
                       {stockResults.map(r => (
                         <div key={r.id}>
-                          <img src={r.thumb} alt={r.alt}
+                          <button
                             onClick={() => { set('mediaType', 'image'); set('bg', r.full); resetFraming(); toast(`Photo by ${r.credit} applied`); }}
-                            style={{ width: '100%', height: 54, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: '1px solid var(--rule)' }} />
+                            aria-label={`Use photo: ${r.alt}`}
+                            style={{ width: '100%', height: 54, padding: 0, border: '1px solid var(--rule)', borderRadius: 4, cursor: 'pointer', background: `url('${r.thumb}') center/cover` }}
+                          />
                           <a href={`${r.creditUrl}?utm_source=snap_studio&utm_medium=referral`} target="_blank" rel="noreferrer"
                             style={{ fontSize: 9, color: 'var(--rule-light)', display: 'block', marginTop: 2, textAlign: 'center', textDecoration: 'none' }}>{r.credit}</a>
                         </div>
@@ -429,39 +471,39 @@ export default function Editor() {
             </>
           )}
 
+          <SectionHeader n="04" title="Content" />
           {showNewsFields && (
             <>
-              <div className="field"><label>Watermark</label><input type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
-              <div className="field"><label>Kicker</label><input type="text" value={data.kicker} onChange={e => set('kicker', e.target.value)} /></div>
-              <div className="field"><label>Headline</label><textarea rows={2} value={data.headline} onChange={e => set('headline', e.target.value)} /></div>
-              <div className="field"><label>Banner sub-lines (one per line)</label><textarea rows={2} value={data.bannerLines} onChange={e => set('bannerLines', e.target.value)} /></div>
-              <div className="field"><label>Caption</label><textarea rows={3} value={data.caption} onChange={e => set('caption', e.target.value)} /></div>
-              <div className="field"><label>Corner tag</label><input type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-watermark">Watermark</label><input id="f-watermark" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-kicker">Kicker</label><input id="f-kicker" type="text" value={data.kicker} onChange={e => set('kicker', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-headline">Headline</label><textarea id="f-headline" rows={2} value={data.headline} onChange={e => set('headline', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-banner">Banner sub-lines (one per line)</label><textarea id="f-banner" rows={2} value={data.bannerLines} onChange={e => set('bannerLines', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-caption">Caption</label><textarea id="f-caption" rows={3} value={data.caption} onChange={e => set('caption', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-corner">Corner tag</label><input id="f-corner" type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
             </>
           )}
-
           {showQuoteFields && (
             <>
-              <div className="field"><label>Watermark</label><input type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
-              <div className="field"><label>Quote text</label><textarea rows={3} value={data.quoteText} onChange={e => set('quoteText', e.target.value)} /></div>
-              <div className="field"><label>Author / attribution</label><input type="text" value={data.quoteAuthor} onChange={e => set('quoteAuthor', e.target.value)} /></div>
-              <div className="field"><label>Corner tag</label><input type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-watermark2">Watermark</label><input id="f-watermark2" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-quote">Quote text</label><textarea id="f-quote" rows={3} value={data.quoteText} onChange={e => set('quoteText', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-author">Author / attribution</label><input id="f-author" type="text" value={data.quoteAuthor} onChange={e => set('quoteAuthor', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-corner2">Corner tag</label><input id="f-corner2" type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
             </>
           )}
-
           {showStatFields && (
             <>
-              <div className="field"><label>Watermark</label><input type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
-              <div className="field"><label>Stat number</label><input type="text" value={data.statNumber} onChange={e => set('statNumber', e.target.value)} /></div>
-              <div className="field"><label>Stat label</label><input type="text" value={data.statLabel} onChange={e => set('statLabel', e.target.value)} /></div>
-              <div className="field"><label>Description</label><textarea rows={2} value={data.statDesc} onChange={e => set('statDesc', e.target.value)} /></div>
-              <div className="field"><label>Corner tag</label><input type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-watermark3">Watermark</label><input id="f-watermark3" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-statnum">Stat number</label><input id="f-statnum" type="text" value={data.statNumber} onChange={e => set('statNumber', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-statlabel">Stat label</label><input id="f-statlabel" type="text" value={data.statLabel} onChange={e => set('statLabel', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-statdesc">Description</label><textarea id="f-statdesc" rows={2} value={data.statDesc} onChange={e => set('statDesc', e.target.value)} /></div>
+              <div className="field"><label htmlFor="f-corner3">Corner tag</label><input id="f-corner3" type="text" value={data.cornerTag} onChange={e => set('cornerTag', e.target.value)} /></div>
             </>
           )}
 
+          <SectionHeader n="05" title="Polish" />
           <button className="btn secondary" style={{ width: '100%', marginBottom: 8 }} onClick={checkGrammar}>{grammarChecking ? 'Checking...' : 'Check grammar & spelling'}</button>
           {grammarIssues && (
-            <div style={{ marginBottom: 12, fontSize: 11.5 }}>
+            <div style={{ marginBottom: 12, fontSize: 11.5 }} role="status">
               {grammarIssues.length === 0 && <p style={{ color: 'var(--rule-light)' }}>No issues found.</p>}
               {grammarIssues.map((iss, i) => (
                 <div key={i} style={{ padding: '6px 8px', background: 'var(--ink)', borderRadius: 6, marginBottom: 5 }}>
@@ -472,6 +514,7 @@ export default function Editor() {
             </div>
           )}
 
+          <SectionHeader n="06" title="Export & Project" />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
@@ -494,15 +537,12 @@ export default function Editor() {
             <div className="cm-tr" />
             <div className="cm-bl" />
             <div className="proof-stamp">{size.w}×{size.h} · {size.name}</div>
-            <div
-              onMouseDown={startDrag}
-              style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default' }}
-            >
-              <CardCanvas ref={cardRef} data={{ ...data, ratioW: size.w, ratioH: size.h }} />
+            <div onMouseDown={startDrag} style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default' }}>
+              <CardCanvas ref={cardRef} data={{ ...data, ratioW: size.w, ratioH: size.h, brandLogo, showLogo }} />
             </div>
           </div>
           {showBgFields && data.mediaType === 'image' && (
-            <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: 10 }}>Click and drag the photo above to reposition it — same as the sliders, just faster.</p>
+            <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: 10 }}>Click and drag the photo above to reposition it — same as the steppers, just faster.</p>
           )}
         </div>
       </div>

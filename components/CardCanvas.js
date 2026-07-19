@@ -7,6 +7,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
     bg, panX = 50, panY = 50, zoom = 100,
     watermark, kicker, headline, bannerLines, caption, cornerTag,
     quoteText, quoteAuthor, statNumber, statLabel, statDesc,
+    brandLogo, showLogo,
     ratioW, ratioH
   } = data;
 
@@ -31,6 +32,14 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
 
   const lines = (bannerLines || '').split('\n').filter(l => l.trim().length);
 
+  // Rendered once, reused across all four layouts, bottom-right corner.
+  const logoBadge = showLogo && brandLogo ? (
+    <img src={brandLogo} alt="" style={{
+      position: 'absolute', bottom: 12, right: 12, width: Math.max(24, dispW * 0.09), height: Math.max(24, dispW * 0.09),
+      borderRadius: '50%', objectFit: 'cover', border: '2px solid rgba(255,255,255,.85)', boxShadow: '0 2px 8px rgba(0,0,0,.4)', zIndex: 5
+    }} />
+  ) : null;
+
   if (layout === 'dark') {
     return (
       <div ref={ref} style={wrapStyle}>
@@ -48,6 +57,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
           <div style={{ fontSize: bodySize, fontStyle: 'italic', lineHeight: 1.5, color: 'rgba(255,255,255,.88)', maxWidth: '96%', marginTop: 7, textShadow: '0 1px 4px rgba(0,0,0,.6)', marginLeft: align === 'center' ? 'auto' : 0, marginRight: align === 'center' ? 'auto' : 0 }}>{caption}</div>
           {cornerTag && <div style={{ marginTop: 10, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
         </div>
+        {logoBadge}
       </div>
     );
   }
@@ -70,6 +80,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
           <div style={{ fontSize: bodySize, lineHeight: 1.6, color: '#3a3b3e', maxWidth: '92%', margin: '0 auto' }}>{caption}</div>
         </div>
         {cornerTag && <div style={{ marginTop: 14, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: color, textTransform: 'uppercase' }}>{cornerTag}</div>}
+        {logoBadge}
       </div>
     );
   }
@@ -83,6 +94,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
         <div style={{ width: 44, height: 3, background: color, margin: '0 auto 16px' }} />
         <div style={{ fontWeight: 700, fontSize: 13, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--brass)' }}>&mdash; {quoteAuthor}</div>
         {cornerTag && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 16, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
+        {logoBadge}
       </div>
     );
   }
@@ -95,6 +107,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data }, ref) {
       <div style={{ fontFamily: font, fontSize: 18, letterSpacing: '.06em', textTransform: 'uppercase', margin: '8px 0 16px 0' }}>{statLabel}</div>
       <div style={{ fontSize: bodySize, lineHeight: 1.6, color: 'rgba(255,255,255,.75)', maxWidth: '90%' }}>{statDesc}</div>
       {cornerTag && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 16, fontFamily: font, fontSize: 10.5, letterSpacing: '.1em', color: 'var(--brass)', textTransform: 'uppercase' }}>{cornerTag}</div>}
+      {logoBadge}
     </div>
   );
 });

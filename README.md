@@ -5,7 +5,9 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 ## What's included
 
 - `pages/index.js` — dashboard
-- `pages/editor.js` — the main card builder: 4 layouts (Dark Alert, Light Card, Quote, Stat), unlimited text/image layers, platform sizes, +/- steppers for every size control, drag-and-drop uploads, video frame capture, stock photo search, emoji picker, customizable photo fade + page color, version history, batch export, save/load
+- `pages/editor.js` — the main card builder: 4 layouts, unlimited text/image layers with typography controls and drag-resize, platform sizes, drag-and-drop uploads, video frame capture, stock photo search, AI Assist, emoji picker, customizable photo fade + page color, version history, batch export, save/load
+- `pages/media.js` — media library (IndexedDB): upload once, reuse across every project
+- `pages/brand.js` — multiple named brand kits (logo + name each), switch the active one
 - `pages/templates.js` — 23 starting points across Nepal-specific occasions and worldwide formats
 - `pages/brand.js` — logo + brand name (saved in your browser)
 - `pages/api/stock.js` — server-side proxy to Unsplash (keeps your key private)
@@ -35,6 +37,18 @@ Open http://localhost:3000
 
 The stock photo search in the Editor won't return results until this is set — everything else works without it.
 
+### Setting up AI Assist (optional)
+1. Get an API key from an OpenAI-compatible provider (OpenAI itself, or any provider implementing the same `/chat/completions` shape)
+2. Add to `.env.local`:
+   ```
+   AI_API_KEY=your_key_here
+   AI_API_URL=https://api.openai.com/v1/chat/completions   # or your provider's endpoint
+   AI_MODEL=gpt-4o-mini                                     # or whatever model your provider offers
+   ```
+3. Restart `npm run dev`
+
+Without a key, the AI Assist buttons in the Editor return a clear error explaining what's missing — nothing else in the app is affected.
+
 ## Push to GitHub
 
 ```bash
@@ -50,7 +64,7 @@ git push -u origin main
 
 1. Go to https://vercel.com/new and import the GitHub repo you just pushed
 2. Framework preset: Next.js (auto-detected, no changes needed)
-3. Under **Environment Variables**, add `UNSPLASH_ACCESS_KEY` with your key
+3. Under **Environment Variables**, add `UNSPLASH_ACCESS_KEY` with your key (and `AI_API_KEY` / `AI_API_URL` / `AI_MODEL` if you want AI Assist working in production)
 4. Click Deploy — you'll get a live URL in about a minute
 
 Every push to `main` auto-redeploys.

@@ -1,6 +1,10 @@
 export default function Stepper({ label, value, onChange, min, max, step = 1, unit = '' }) {
-  const dec = () => onChange(Math.max(min, value - step));
-  const inc = () => onChange(Math.min(max, value + step));
+  // Guards against float drift (e.g. 1.2 - 0.1 → 1.0999999999999999) for
+  // decimal steps like line-height (0.1) — rounds to the step's own precision.
+  const decimals = (step.toString().split('.')[1] || '').length;
+  const round = (n) => decimals ? Math.round(n * 10 ** decimals) / 10 ** decimals : n;
+  const dec = () => onChange(round(Math.max(min, value - step)));
+  const inc = () => onChange(round(Math.min(max, value + step)));
   return (
     <div className="field">
       <label>{label}</label>

@@ -2,45 +2,83 @@ import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
+import { readKits, saveKits, getActiveKitId, setActiveKitId, newKitId } from '../lib/brandKits';
 
 export default function Brand() {
-  const [brand, setBrand] = useState({ logo: '', name: 'Snap Studio' });
+  const [kits, setKits] = useState([]);
+  const [activeId, setActiveId] = useState('');
   const { toast, ToastEl } = useToast();
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('snapstudio:brand') || '{}');
-      setBrand(b => ({ ...b, ...saved }));
-    } catch (e) {}
+    setKits(readKits());
+    setActiveId(getActiveKitId());
   }, []);
 
-  function onLogoUpload(file) {
-    const reader = new FileReader();
-    reader.onload = ev => setBrand(b => ({ ...b, logo: ev.target.result }));
-    reader.readAsDataURL(file);
+  function persist(nextKits, nextActive) {
+    setKits(nextKits);
+    saveKits(nextKits);
+    if (nextActive !== undefined) {
+      setActiveId(nextActive);
+      setActiveKitId(nextActive);
+    }
   }
 
-  function save() {
-    localStorage.setItem('snapstudio:brand', JSON.stringify(brand));
-    toast('Brand kit saved — visible in the sidebar and on your cards now');
+  function addKit() {
+    const kit = { id: newKitId(), name: `Brand ${kits.length + 1}`, logo: '' };
+    const next = [...kits, kit];
+    persist(next, kits.length === 0 ? kit.id : activeId);
+    toast('New brand kit added');
+  }
+
+  function updateKit(id, patch) {
+    persist(kits.map(k => k.id === id ? { ...k, ...patch } : k));
+  }
+
+  function deleteKit(id) {
+    const next = kits.filter(k => k.id !== id);
+    const nextActive = activeId === id ? (next[0]?.id || '') : activeId;
+    persist(next, nextActive);
+    toast('Brand kit deleted');
+  }
+
+  function onLogoUpload(id, file) {
+    const reader = new FileReader();
+    reader.onload = ev => updateKit(id, { logo: ev.target.result });
+    reader.readAsDataURL(file);
   }
 
   return (
     <Layout>
       <h1 className="page-title">Brand Kit</h1>
-      <p className="page-sub">Import your logo and set your brand name. Saved locally in this browser — nothing is uploaded anywhere. Once saved, enable &ldquo;Show logo on card&rdquo; in the Editor's Canvas section to have it appear on your exports.</p>
+      <p className="page-sub">Set up multiple brand kits — one per client, publication, or campaign — and switch between them. Saved locally in this browser, nothing is uploaded anywhere. The active kit's logo is what appears in the sidebar and, if enabled, on your exported cards.</p>
 
-      <div className="card-panel" style={{ maxWidth: 460 }}>
-        <div className="field">
-          <label>Logo</label>
-          {brand.logo && <img src={brand.logo} alt="logo preview" style={{ width: 64, height: 64, borderRadius: 8, objectFit: 'cover', marginBottom: 8, display: 'block', border: '1px solid var(--rule)' }} />}
-          <DropZone label="" accept="image/*" onFile={onLogoUpload} hint="Drag & drop your logo here, or click to choose" />
-        </div>
-        <div className="field">
-          <label htmlFor="brand-name">Brand name</label>
-          <input id="brand-name" type="text" value={brand.name} onChange={e => setBrand(b => ({ ...b, name: e.target.value }))} />
-        </div>
-        <button className="btn" onClick={save}>Save brand kit</button>
+      <button className="btn" style={{ marginBottom: 20 }} onClick={addKit}>+ New brand kit</button>
+
+      {kits.length === 0 && <p style={{ color: 'var(--rule-light)' }}>No brand kits yet — add one above.</p>}
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 18 }}>
+        {kits.map(kit => (
+          <div key={kit.id} className="card-panel" style={{ border: activeId === kit.id ? '1px solid var(--brass)' : '1px solid var(--rule)' }}>
+            <div className="field">
+              <label>Logo</label>
+              {kit.logo && <img src={kit.logo} alt="logo preview" style={{ width: 56, height: 56, borderRadius: 8, objectFit: 'cover', marginBottom: 8, display: 'block', border: '1px solid var(--rule)' }} />}
+              <DropZone label="" accept="image/*" onFile={file => onLogoUpload(kit.id, file)} hint="Drag & drop a logo, or click to choose" />
+            </div>
+            <div className="field">
+              <label>Kit name</label>
+              <input type="text" value={kit.name} onChange={e => updateKit(kit.id, { name: e.target.value })} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button
+                className={`btn ${activeId === kit.id ? '' : 'secondary'}`}
+                onClick={() => persist(kits, kit.id)}
+              >
+                {activeId === kit.id ? 'Active' : 'Set active'}
+              </button>
+              <button className="btn secondary" onClick={() => deleteKit(kit.id)} style={{ color: 'var(--proof-red)' }}>Delete</button>
+            </div>
+          </div>
+        ))}
       </div>
       {ToastEl}
     </Layout>

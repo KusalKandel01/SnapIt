@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import { getDisplayDims } from '../lib/dims';
 
-const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLayerMouseDown }, ref) {
+const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLayerMouseDown, onLayerResizeMouseDown }, ref) {
   const {
     layout, align, color, font, headSize, bodySize,
     bg, panX = 50, panY = 50, zoom = 100,
@@ -85,8 +85,100 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
     return '0px';
   };
 
+  const resizeHandle = (id) => onLayerResizeMouseDown ? (
+    <div
+      onMouseDown={(e) => onLayerResizeMouseDown(e, id)}
+      style={{
+        position: 'absolute', right: -7, bottom: -7, width: 14, height: 14,
+        borderRadius: '50%', background: 'var(--brass)', border: '2px solid var(--ink)',
+        cursor: 'nwse-resize', zIndex: 7
+      }}
+    />
+  ) : null;
+
+  // ---- Chart layers: bar/pie/line, hand-rolled SVG (no chart library —
+  // keeps the app dependency-light and every chart is just plain markup
+  // that html2canvas can capture like anything else). ----
+  function parseChartData(dataText) {
+    return (dataText || '').split('\n')
+      .map(line => {
+        const [label, value] = line.split(',').map(s => (s || '').trim());
+        const num = parseFloat(value);
+        return label && !isNaN(num) ? { label, value: num } : null;
+      })
+      .filter(Boolean);
+  }
+
+  const CHART_PALETTE = ['#b98b3e', '#3e6259', '#9c3b3b', '#8a6fb0', '#4a7fa8', '#c99c4c'];
+
+  function renderChartSVG(l, wPx, hPx) {
+    const rows = parseChartData(l.dataText);
+    const vbW = 200, vbH = 130;
+    if (rows.length === 0) {
+      return <svg viewBox={`0 0 ${vbW} ${vbH}`} width={wPx} height={hPx}><text x={vbW / 2} y={vbH / 2} fill="#888" fontSize="10" textAnchor="middle">Add data →</text></svg>;
+    }
+    const color = l.color || '#b98b3e';
+
+    if (l.chartType === 'pie') {
+      const total = rows.reduce((s, r) => s + Math.max(0, r.value), 0) || 1;
+      let angle = -90;
+      const cx = vbW / 2, cy = vbH / 2, r = Math.min(vbW, vbH) / 2 - 8;
+      const slices = rows.map((row, i) => {
+        const frac = Math.max(0, row.value) / total;
+        const sweep = frac * 360;
+        const x1 = cx + r * Math.cos((angle * Math.PI) / 180);
+        const y1 = cy + r * Math.sin((angle * Math.PI) / 180);
+        angle += sweep;
+        const x2 = cx + r * Math.cos((angle * Math.PI) / 180);
+        const y2 = cy + r * Math.sin((angle * Math.PI) / 180);
+        const large = sweep > 180 ? 1 : 0;
+        const path = `M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} Z`;
+        return <path key={i} d={path} fill={CHART_PALETTE[i % CHART_PALETTE.length]} stroke="#0b0c0e" strokeWidth="1" />;
+      });
+      return <svg viewBox={`0 0 ${vbW} ${vbH}`} width={wPx} height={hPx}>{slices}</svg>;
+    }
+
+    if (l.chartType === 'line') {
+      const max = Math.max(...rows.map(r => r.value), 1);
+      const padX = 12, padY = 12;
+      const stepX = (vbW - padX * 2) / Math.max(1, rows.length - 1);
+      const points = rows.map((row, i) => {
+        const x = padX + i * stepX;
+        const y = vbH - padY - (row.value / max) * (vbH - padY * 2);
+        return `${x},${y}`;
+      }).join(' ');
+      return (
+        <svg viewBox={`0 0 ${vbW} ${vbH}`} width={wPx} height={hPx}>
+          <polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+          {rows.map((row, i) => {
+            const x = padX + i * stepX;
+            const y = vbH - padY - (row.value / max) * (vbH - padY * 2);
+            return <circle key={i} cx={x} cy={y} r="3" fill={color} />;
+          })}
+        </svg>
+      );
+    }
+
+    // bar (default)
+    const max = Math.max(...rows.map(r => r.value), 1);
+    const padX = 8, padY = 14, gap = 6;
+    const barW = (vbW - padX * 2 - gap * (rows.length - 1)) / rows.length;
+    return (
+      <svg viewBox={`0 0 ${vbW} ${vbH}`} width={wPx} height={hPx}>
+        {rows.map((row, i) => {
+          const h = (row.value / max) * (vbH - padY * 2);
+          const x = padX + i * (barW + gap);
+          const y = vbH - padY - h;
+          return <rect key={i} x={x} y={y} width={barW} height={h} fill={color} rx="2" />;
+        })}
+      </svg>
+    );
+  }
+
   const layersOverlay = layers.filter(l => l.visible !== false).map(l => {
     const isImage = l.type === 'image';
+    const isChart = l.type === 'chart';
+    const isSelected = selectedLayerId === l.id;
     const commonProps = {
       key: l.id,
       onMouseDown: onLayerMouseDown ? (e) => onLayerMouseDown(e, l.id) : undefined,
@@ -96,28 +188,40 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
         transform: `translate(-50%, -50%) rotate(${l.rotation || 0}deg)`,
         opacity: l.opacity != null ? l.opacity : 1,
         cursor: onLayerMouseDown ? (l.locked ? 'not-allowed' : 'grab') : 'default',
-        outline: selectedLayerId === l.id ? '1.5px dashed var(--brass)' : 'none',
+        outline: isSelected ? '1.5px dashed var(--brass)' : 'none',
         outlineOffset: 4,
         userSelect: 'none', zIndex: 6
       }
     };
 
+    if (isChart) {
+      const wPx = ((l.width || 40) / 100) * dispW;
+      const hPx = ((l.height || 28) / 100) * dispW;
+      return (
+        <div {...commonProps} style={{ ...commonProps.style, width: wPx, height: hPx, background: 'rgba(255,255,255,.92)', borderRadius: 6, padding: 4, boxShadow: '0 2px 10px rgba(0,0,0,.3)' }}>
+          {renderChartSVG(l, wPx - 8, hPx - 8)}
+          {isSelected && resizeHandle(l.id)}
+        </div>
+      );
+    }
+
     if (isImage) {
       const wPx = ((l.width || 25) / 100) * dispW;
       const hPx = ((l.height || 25) / 100) * dispW;
       return (
-        <img
-          {...commonProps}
-          src={l.src}
-          alt=""
-          style={{
-            ...commonProps.style,
-            width: wPx, height: hPx, objectFit: 'cover',
-            borderRadius: shapeRadius(l.shape, wPx, hPx),
-            border: l.borderWidth ? `${l.borderWidth}px solid ${l.borderColor || '#ffffff'}` : 'none',
-            boxShadow: '0 2px 10px rgba(0,0,0,.35)'
-          }}
-        />
+        <div {...commonProps} style={{ ...commonProps.style, width: wPx, height: hPx }}>
+          <img
+            src={l.src}
+            alt=""
+            style={{
+              width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+              borderRadius: shapeRadius(l.shape, wPx, hPx),
+              border: l.borderWidth ? `${l.borderWidth}px solid ${l.borderColor || '#ffffff'}` : 'none',
+              boxShadow: '0 2px 10px rgba(0,0,0,.35)', pointerEvents: 'none'
+            }}
+          />
+          {isSelected && resizeHandle(l.id)}
+        </div>
       );
     }
 
@@ -127,9 +231,13 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
         fontFamily: l.font || font, fontSize: l.fontSize || 24, color: l.color || '#ffffff',
         fontWeight: l.bold ? 700 : 400,
         textAlign: 'center', whiteSpace: 'pre-wrap', width: `${l.width || 85}%`,
-        textShadow: '0 1px 4px rgba(0,0,0,.5)'
+        letterSpacing: `${l.letterSpacing || 0}px`,
+        lineHeight: l.lineHeight || 1.2,
+        WebkitTextStroke: l.strokeWidth ? `${l.strokeWidth}px ${l.strokeColor || '#000000'}` : undefined,
+        textShadow: l.shadowStrength === 0 ? 'none' : `0 1px 4px rgba(0,0,0,${(l.shadowStrength ?? 50) / 100})`
       }}>
         {l.text}
+        {isSelected && resizeHandle(l.id)}
       </div>
     );
   });

@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { getActiveKit } from '../lib/brandKits';
 
 const NAV = [
   { href: '/', label: 'Dashboard' },
   { href: '/editor', label: 'Editor' },
   { href: '/templates', label: 'Templates' },
+  { href: '/media', label: 'Media Library' },
   { href: '/brand', label: 'Brand Kit' }
 ];
 
@@ -14,11 +16,9 @@ export default function Layout({ children }) {
   const [brand, setBrand] = useState({ logo: '', name: 'Snap Studio' });
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('snapstudio:brand') || '{}');
-      setBrand(b => ({ ...b, ...saved }));
-    } catch (e) {}
-  }, []);
+    const active = getActiveKit();
+    if (active) setBrand({ logo: active.logo, name: active.name });
+  }, [router.pathname]);
 
   return (
     <div className="app-shell">

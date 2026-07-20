@@ -7,6 +7,7 @@ import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
 import { useAutosave, readDraft } from '../components/useAutosave';
 import { PLATFORM_GROUPS, findSize } from '../lib/platformSizes';
+import { getActiveKit } from '../lib/brandKits';
 
 const DEFAULT_DATA = {
   projectName: 'Untitled project',
@@ -42,6 +43,33 @@ const FONTS = [
   { label: 'Poppins', value: "'Poppins',sans-serif" }
 ];
 
+// Preset combos for text layers — one click applies a curated look instead
+// of tuning five sliders by hand. Each only sets the fields it cares about,
+// so applying a preset never touches text/position/rotation.
+const TEXT_PRESETS = [
+  { name: 'Bold Headline', style: { fontSize: 44, bold: true, letterSpacing: 0, lineHeight: 1.05, shadowStrength: 60, strokeWidth: 0 } },
+  { name: 'Subtitle', style: { fontSize: 22, bold: false, letterSpacing: 1, lineHeight: 1.3, shadowStrength: 40, strokeWidth: 0 } },
+  { name: 'Fine Caption', style: { fontSize: 14, bold: false, letterSpacing: 0, lineHeight: 1.5, shadowStrength: 30, strokeWidth: 0 } },
+  { name: 'Badge / Label', style: { fontSize: 16, bold: true, letterSpacing: 2, lineHeight: 1, shadowStrength: 0, strokeWidth: 0 } },
+  { name: 'Outlined Pop', style: { fontSize: 36, bold: true, letterSpacing: 0, lineHeight: 1.1, shadowStrength: 0, strokeWidth: 2, strokeColor: '#000000' } },
+  { name: 'Soft Quote', style: { fontSize: 26, bold: false, letterSpacing: 0.5, lineHeight: 1.4, shadowStrength: 50, strokeWidth: 0 } }
+];
+
+// Rough, honest bounds check — not a pixel-perfect overflow detector. Text
+// layer heights are dynamic (depend on wrapping), so this only checks
+// horizontal bounds for text (which IS precise, width is a known field) and
+// full horizontal+vertical bounds for images (both dimensions are known).
+function layerOutOfBounds(l) {
+  const halfW = (l.width || (l.type === 'image' || l.type === 'chart' ? 25 : 85)) / 2;
+  const xOut = (l.x - halfW < -0.5) || (l.x + halfW > 100.5);
+  if (l.type === 'image' || l.type === 'chart') {
+    const halfH = (l.height || 25) / 2;
+    const yOut = (l.y - halfH < -0.5) || (l.y + halfH > 100.5);
+    return xOut || yOut;
+  }
+  return xOut;
+}
+
 function SectionHeader({ n, title }) {
   return (
     <div className="section-header">
@@ -62,6 +90,10 @@ export default function Editor() {
   const [stockLoading, setStockLoading] = useState(false);
   const [mediaUrlInput, setMediaUrlInput] = useState('');
   const [mediaUrlError, setMediaUrlError] = useState('');
+  const [recentMedia, setRecentMedia] = useState([]);
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiLoading, setAiLoading] = useState('');
+  const [aiResults, setAiResults] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   const [batchExporting, setBatchExporting] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -90,9 +122,10 @@ export default function Editor() {
     } catch (e) {}
     setLoadedPreset(true);
     try {
-      const brand = JSON.parse(localStorage.getItem('snapstudio:brand') || '{}');
-      if (brand.logo) setBrandLogo(brand.logo);
+      const active = getActiveKit();
+      if (active && active.logo) setBrandLogo(active.logo);
     } catch (e) {}
+    refreshRecentMedia();
   }, []);
 
   useEffect(() => { if (editingName) nameInputRef.current?.focus(); }, [editingName]);
@@ -171,6 +204,20 @@ export default function Editor() {
     };
     reader.readAsDataURL(file);
   }
+
+  // ---- Chart layers: bar/pie/line, on the same layers array ----
+  function addChartLayer() {
+    const id = `layer-${Date.now()}`;
+    const newLayer = {
+      id, type: 'chart', chartType: 'bar',
+      dataText: 'Mon, 12\nTue, 19\nWed, 8\nThu, 25\nFri, 16',
+      color: '#b98b3e',
+      x: 50, y: 50, width: 45, height: 30,
+      rotation: 0, opacity: 1, visible: true, locked: false
+    };
+    setData(d => ({ ...d, layers: [...(d.layers || []), newLayer] }));
+    setSelectedLayerId(id);
+  }
   function updateLayer(id, patch) {
     setData(d => ({ ...d, layers: d.layers.map(l => l.id === id ? { ...l, ...patch } : l) }));
   }
@@ -216,6 +263,63 @@ export default function Editor() {
     layerDragState.current = null;
     window.removeEventListener('mousemove', onLayerDragMove);
     window.removeEventListener('mouseup', onLayerDragEnd);
+  }
+
+  // ---- Drag-corner resize — the actual "resize by dragging" requested ----
+  const resizeDragState = useRef(null);
+  function onLayerResizeMouseDown(e, id) {
+    const layer = data.layers.find(l => l.id === id);
+    if (!layer || layer.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const isImage = layer.type === 'image' || layer.type === 'chart';
+    resizeDragState.current = {
+      id, isImage,
+      startX: e.clientX, startY: e.clientY,
+      startWidth: layer.width || (isImage ? 25 : 85),
+      startHeight: isImage ? (layer.height || 25) : null,
+      cardWidthPx: cardRef.current.getBoundingClientRect().width
+    };
+    window.addEventListener('mousemove', onResizeMove);
+    window.addEventListener('mouseup', onResizeEnd);
+  }
+  function onResizeMove(e) {
+    const s = resizeDragState.current;
+    if (!s) return;
+    const dx = e.clientX - s.startX, dy = e.clientY - s.startY;
+    const deltaWPercent = (dx / s.cardWidthPx) * 100;
+    if (s.isImage) {
+      const deltaHPercent = (dy / s.cardWidthPx) * 100;
+      updateLayer(s.id, {
+        width: Math.min(100, Math.max(5, Math.round(s.startWidth + deltaWPercent))),
+        height: Math.min(100, Math.max(5, Math.round(s.startHeight + deltaHPercent)))
+      });
+    } else {
+      // Text layers resize by box width only — height follows content naturally.
+      updateLayer(s.id, { width: Math.min(100, Math.max(10, Math.round(s.startWidth + deltaWPercent))) });
+    }
+  }
+  function onResizeEnd() {
+    resizeDragState.current = null;
+    window.removeEventListener('mousemove', onResizeMove);
+    window.removeEventListener('mouseup', onResizeEnd);
+  }
+
+  // ---- Layer ordering — array order is stacking order (later = on top) ----
+  function moveLayer(id, direction) {
+    setData(d => {
+      const idx = d.layers.findIndex(l => l.id === id);
+      if (idx === -1) return d;
+      const next = [...d.layers];
+      let target;
+      if (direction === 'up') target = Math.min(next.length - 1, idx + 1);
+      else if (direction === 'down') target = Math.max(0, idx - 1);
+      else if (direction === 'front') target = next.length - 1;
+      else target = 0; // 'back'
+      const [item] = next.splice(idx, 1);
+      next.splice(target, 0, item);
+      return { ...d, layers: next };
+    });
   }
 
   // Keyboard nudge + delete for the selected layer — skipped entirely while
@@ -283,8 +387,21 @@ export default function Editor() {
 
   function onUploadPhoto(file) {
     const reader = new FileReader();
-    reader.onload = ev => { set('mediaType', 'image'); set('bg', ev.target.result); resetFraming(); };
+    reader.onload = ev => {
+      set('mediaType', 'image'); set('bg', ev.target.result); resetFraming();
+      // Best-effort save to the media library so it's reusable next time —
+      // never blocks or errors the actual upload if it fails.
+      import('../lib/mediaLibrary').then(({ addMedia }) => {
+        addMedia({ name: file.name, dataUrl: ev.target.result }).then(refreshRecentMedia).catch(() => {});
+      }).catch(() => {});
+    };
     reader.readAsDataURL(file);
+  }
+
+  function refreshRecentMedia() {
+    import('../lib/mediaLibrary').then(({ listMedia }) => {
+      listMedia().then(items => setRecentMedia(items.slice(0, 8))).catch(() => {});
+    }).catch(() => {});
   }
 
   function useMediaUrlAsImage() {
@@ -326,6 +443,22 @@ export default function Editor() {
     } catch (err) {
       setMediaUrlError('This video source blocks frame capture (cross-origin protection most platforms enforce). Try uploading the video file instead.');
     }
+  }
+
+  async function callAI(task) {
+    const topic = aiTopic.trim() || data.headline.trim();
+    if (!topic) { toast('Type what the card is about first'); return; }
+    setAiLoading(task);
+    try {
+      const res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, input: topic }) });
+      const json = await res.json();
+      if (json.error) { toast(json.error); setAiResults(null); }
+      else {
+        const lines = task === 'headlines' ? json.text.split('\n').filter(l => l.trim()) : [json.text];
+        setAiResults({ task, lines });
+      }
+    } catch (err) { toast('AI request failed — check your connection'); }
+    setAiLoading('');
   }
 
   async function exportImage(format) {
@@ -510,15 +643,16 @@ export default function Editor() {
 
           <SectionHeader n="03" title="Layers" />
           <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: -6, marginBottom: 10 }}>
-            Add unlimited text boxes and images on top of your card — different sizes, shapes, and positions. Drag directly on the canvas to move, arrow keys to nudge, Delete to remove.
+            Add unlimited text boxes and images on top of your card — different sizes, shapes, and positions. Drag directly on the canvas to move, drag the small brass dot on a selected layer's corner to resize, arrow keys to nudge, Delete to remove.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
             <button className="btn secondary" onClick={addTextLayer}>+ Text layer</button>
             <label className="btn secondary" style={{ textAlign: 'center', cursor: 'pointer' }}>
               + Image layer
               <input type="file" accept="image/*" onChange={e => { if (e.target.files[0]) addImageLayer(e.target.files[0]); e.target.value = ''; }} style={{ display: 'none' }} />
             </label>
           </div>
+          <button className="btn secondary" style={{ width: '100%', marginBottom: 10 }} onClick={addChartLayer}>+ Chart layer</button>
           {data.layers.length === 0 && <p style={{ fontSize: 11, color: 'var(--rule-light)', marginBottom: 14 }}>No extra layers yet.</p>}
           {data.layers.map(l => (
             <div key={l.id} className="card-panel" style={{ padding: 10, marginBottom: 8, border: selectedLayerId === l.id ? '1px solid var(--brass)' : '1px solid var(--rule)' }}>
@@ -526,17 +660,47 @@ export default function Editor() {
                 {l.type === 'image' && (
                   <img src={l.src} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: l.shape === 'circle' ? '50%' : 3, flexShrink: 0 }} />
                 )}
+                {l.type === 'chart' && <span style={{ fontSize: 14, flexShrink: 0 }}>📊</span>}
                 <span
                   onClick={() => setSelectedLayerId(l.id)}
                   style={{ flex: 1, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selectedLayerId === l.id ? 'var(--brass)' : 'var(--white)' }}
                 >
-                  {l.type === 'image' ? 'Image layer' : (l.text || '(empty text)')}
+                  {l.type === 'image' ? 'Image layer' : l.type === 'chart' ? `${l.chartType || 'bar'} chart` : (l.text || '(empty text)')}
+                  {layerOutOfBounds(l) && <span title="This layer extends past the card edge" style={{ marginLeft: 4 }}>⚠️</span>}
                 </span>
-                <button className="btn secondary" aria-label={l.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => updateLayer(l.id, { visible: l.visible === false ? true : false })} style={{ padding: '4px 8px', fontSize: 11 }}>{l.visible === false ? '🙈' : '👁'}</button>
-                <button className="btn secondary" aria-label={l.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateLayer(l.id, { locked: !l.locked })} style={{ padding: '4px 8px', fontSize: 11 }}>{l.locked ? '🔒' : '🔓'}</button>
-                <button className="btn secondary" aria-label="Duplicate layer" onClick={() => duplicateLayer(l.id)} style={{ padding: '4px 8px', fontSize: 11 }}>⧉</button>
+                <button className="btn secondary" aria-label={l.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => updateLayer(l.id, { visible: l.visible === false ? true : false })} style={{ padding: '4px 7px', fontSize: 11 }}>{l.visible === false ? '🙈' : '👁'}</button>
+                <button className="btn secondary" aria-label={l.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateLayer(l.id, { locked: !l.locked })} style={{ padding: '4px 7px', fontSize: 11 }}>{l.locked ? '🔒' : '🔓'}</button>
+                <button className="btn secondary" aria-label="Move layer forward" title="Move forward (toward top)" onClick={() => moveLayer(l.id, 'up')} style={{ padding: '4px 6px', fontSize: 11 }}>▲</button>
+                <button className="btn secondary" aria-label="Move layer backward" title="Move backward (toward bottom)" onClick={() => moveLayer(l.id, 'down')} style={{ padding: '4px 6px', fontSize: 11 }}>▼</button>
+                <button className="btn secondary" aria-label="Duplicate layer" onClick={() => duplicateLayer(l.id)} style={{ padding: '4px 7px', fontSize: 11 }}>⧉</button>
                 <button onClick={() => deleteLayer(l.id)} aria-label="Delete layer" style={{ background: 'none', border: 'none', color: 'var(--proof-red)', cursor: 'pointer', fontSize: 15, padding: '4px 6px' }}>×</button>
               </div>
+              {selectedLayerId === l.id && l.type === 'chart' && (
+                <div>
+                  <div className="field">
+                    <label id={`charttype-${l.id}`}>Chart type</label>
+                    <div role="group" aria-labelledby={`charttype-${l.id}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                      <button className={`btn ${l.chartType === 'bar' ? '' : 'secondary'}`} onClick={() => updateLayer(l.id, { chartType: 'bar' })} style={{ fontSize: 10.5 }}>Bar</button>
+                      <button className={`btn ${l.chartType === 'pie' ? '' : 'secondary'}`} onClick={() => updateLayer(l.id, { chartType: 'pie' })} style={{ fontSize: 10.5 }}>Pie</button>
+                      <button className={`btn ${l.chartType === 'line' ? '' : 'secondary'}`} onClick={() => updateLayer(l.id, { chartType: 'line' })} style={{ fontSize: 10.5 }}>Line</button>
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Data — one "label, value" per line</label>
+                    <textarea rows={5} value={l.dataText} onChange={e => updateLayer(l.id, { dataText: e.target.value })} style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }} />
+                  </div>
+                  <Stepper label="Width" value={l.width} onChange={v => updateLayer(l.id, { width: v })} min={15} max={100} step={2} unit="%" />
+                  <Stepper label="Height" value={l.height} onChange={v => updateLayer(l.id, { height: v })} min={10} max={100} step={2} unit="%" />
+                  <Stepper label="Rotation" value={l.rotation || 0} onChange={v => updateLayer(l.id, { rotation: v })} min={-180} max={180} step={5} unit="°" />
+                  {l.chartType !== 'pie' && (
+                    <div className="field">
+                      <label>Color</label>
+                      <input type="color" value={l.color} onChange={e => updateLayer(l.id, { color: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+                    </div>
+                  )}
+                  {l.chartType === 'pie' && <p style={{ fontSize: 10.5, color: 'var(--rule-light)' }}>Pie slices use a fixed color palette for contrast between segments.</p>}
+                </div>
+              )}
               {selectedLayerId === l.id && l.type === 'image' && (
                 <div>
                   <div className="field">
@@ -559,7 +723,7 @@ export default function Editor() {
                   )}
                 </div>
               )}
-              {selectedLayerId === l.id && l.type !== 'image' && (
+              {selectedLayerId === l.id && l.type !== 'image' && l.type !== 'chart' && (
                 <div>
                   <div className="field">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -575,9 +739,34 @@ export default function Editor() {
                     <label>Color</label>
                     <input type="color" value={l.color} onChange={e => updateLayer(l.id, { color: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
                   </div>
-                  <label className="checkline" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rule-light)' }}>
+                  <label className="checkline" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rule-light)', marginBottom: 10 }}>
                     <input type="checkbox" checked={!!l.bold} onChange={e => updateLayer(l.id, { bold: e.target.checked })} /> Bold
                   </label>
+
+                  <div className="section-header" style={{ margin: '4px 0 10px 0' }}>
+                    <span className="title" style={{ fontSize: 13 }}>Preset styles</span>
+                    <span className="rule" />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 14 }}>
+                    {TEXT_PRESETS.map(p => (
+                      <button key={p.name} className="btn secondary" style={{ fontSize: 10.5, padding: '6px 4px' }} onClick={() => updateLayer(l.id, p.style)}>{p.name}</button>
+                    ))}
+                  </div>
+
+                  <div className="section-header" style={{ margin: '4px 0 10px 0' }}>
+                    <span className="title" style={{ fontSize: 13 }}>Typography</span>
+                    <span className="rule" />
+                  </div>
+                  <Stepper label="Letter spacing" value={l.letterSpacing || 0} onChange={v => updateLayer(l.id, { letterSpacing: v })} min={-5} max={20} step={1} unit="px" />
+                  <Stepper label="Line height" value={l.lineHeight || 1.2} onChange={v => updateLayer(l.id, { lineHeight: v })} min={0.8} max={2.5} step={0.1} unit="×" />
+                  <Stepper label="Shadow strength" value={l.shadowStrength ?? 50} onChange={v => updateLayer(l.id, { shadowStrength: v })} min={0} max={100} step={10} unit="%" />
+                  <Stepper label="Outline / stroke width" value={l.strokeWidth || 0} onChange={v => updateLayer(l.id, { strokeWidth: v })} min={0} max={6} step={0.5} unit="px" />
+                  {l.strokeWidth > 0 && (
+                    <div className="field">
+                      <label>Outline color</label>
+                      <input type="color" value={l.strokeColor || '#000000'} onChange={e => updateLayer(l.id, { strokeColor: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -587,6 +776,22 @@ export default function Editor() {
             <>
               <SectionHeader n="04" title="Media" />
               <DropZone label="Background photo" accept="image/*" onFile={onUploadPhoto} hint="Drag & drop a photo, or click to choose" />
+              {recentMedia.length > 0 && (
+                <div className="field">
+                  <label>Recent uploads</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 5 }}>
+                    {recentMedia.map(item => (
+                      <img
+                        key={item.id} src={item.dataUrl} alt={item.name}
+                        onClick={() => { set('mediaType', 'image'); set('bg', item.dataUrl); resetFraming(); }}
+                        title={item.name}
+                        style={{ width: '100%', height: 32, objectFit: 'cover', borderRadius: 3, cursor: 'pointer', border: '1px solid var(--rule)' }}
+                      />
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 10, color: 'var(--rule-light)', marginTop: 4 }}>From your <a href="/media" style={{ color: 'var(--brass)' }}>Media Library</a> — click to reuse.</p>
+                </div>
+              )}
               <DropZone label="Your own video — play, scrub, then grab a frame" accept="video/*" onFile={onUploadVideo} hint="Drag & drop a video, or click to choose" />
               <div className="field">
                 <label htmlFor="media-url">Or paste an image / direct video URL</label>
@@ -648,7 +853,41 @@ export default function Editor() {
             </>
           )}
 
-          <SectionHeader n="05" title="Content" />
+          <SectionHeader n="05" title="AI Assist" />
+          <p style={{ fontSize: 11, color: 'var(--rule-light)', marginTop: -6, marginBottom: 10 }}>
+            Needs an AI provider key configured on your deployment (see README) — degrades gracefully with a clear message if none is set.
+          </p>
+          <div className="field">
+            <label htmlFor="ai-topic">What's this card about?</label>
+            <input id="ai-topic" type="text" value={aiTopic} onChange={e => setAiTopic(e.target.value)} placeholder="Leave blank to use your current headline" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+            <button className="btn secondary" onClick={() => callAI('headlines')} disabled={!!aiLoading} style={{ fontSize: 11 }}>{aiLoading === 'headlines' ? '...' : 'Suggest headlines'}</button>
+            <button className="btn secondary" onClick={() => callAI('rewrite')} disabled={!!aiLoading} style={{ fontSize: 11 }}>{aiLoading === 'rewrite' ? '...' : 'Rewrite headline'}</button>
+            <button className="btn secondary" onClick={() => callAI('caption')} disabled={!!aiLoading} style={{ fontSize: 11 }}>{aiLoading === 'caption' ? '...' : 'Write caption'}</button>
+            <button className="btn secondary" onClick={() => callAI('hashtags')} disabled={!!aiLoading} style={{ fontSize: 11 }}>{aiLoading === 'hashtags' ? '...' : 'Suggest hashtags'}</button>
+          </div>
+          {aiResults && (
+            <div style={{ marginBottom: 14 }}>
+              {aiResults.lines.map((line, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    if (aiResults.task === 'headlines' || aiResults.task === 'rewrite') set('headline', line);
+                    else if (aiResults.task === 'caption') set('caption', line);
+                    else set('caption', (data.caption ? data.caption + ' ' : '') + line);
+                    toast('Applied');
+                  }}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 9px', marginBottom: 5, background: 'var(--ink)', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink-text)', fontSize: 11.5, cursor: 'pointer' }}
+                >
+                  {line}
+                </button>
+              ))}
+              <p style={{ fontSize: 10, color: 'var(--rule-light)' }}>Click a suggestion to apply it.</p>
+            </div>
+          )}
+
+          <SectionHeader n="06" title="Content" />
           {showNewsFields && (
             <>
               <div className="field"><label htmlFor="f-watermark">Watermark</label><input id="f-watermark" type="text" value={data.watermark} onChange={e => set('watermark', e.target.value)} /></div>
@@ -707,7 +946,7 @@ export default function Editor() {
             </>
           )}
 
-          <SectionHeader n="06" title="Export & Project" />
+          <SectionHeader n="07" title="Export & Project" />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
@@ -736,6 +975,7 @@ export default function Editor() {
                 data={{ ...data, ratioW: size.w, ratioH: size.h, brandLogo, showLogo }}
                 selectedLayerId={selectedLayerId}
                 onLayerMouseDown={onLayerMouseDown}
+                onLayerResizeMouseDown={onLayerResizeMouseDown}
               />
             </div>
           </div>

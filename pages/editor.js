@@ -469,11 +469,83 @@ export default function Editor() {
     const node = cardRef.current;
     const scale = size.w / node.getBoundingClientRect().width;
     const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
+
+    if (format === 'pdf') {
+      const { jsPDF } = await import('jspdf');
+      // Orient and size the PDF page to match the card's own aspect ratio
+      // (in points, 1px = 0.75pt) instead of forcing it onto a fixed
+      // Letter/A4 page — a Story-ratio card on an A4 page would either
+      // shrink tiny or spill off the edge.
+      const wPt = size.w * 0.75, hPt = size.h * 0.75;
+      const pdf = new jsPDF({ orientation: wPt > hPt ? 'landscape' : 'portrait', unit: 'pt', format: [wPt, hPt] });
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, wPt, hPt);
+      pdf.save(`${slugify(data.projectName)}.pdf`);
+      toast('PDF downloaded');
+      return;
+    }
+
     const link = document.createElement('a');
     link.download = `${slugify(data.projectName)}.${format}`;
     link.href = canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png', 0.95);
     link.click();
     toast('Image downloaded');
+  }
+
+  // ---- Animated GIF export: a fade-in reveal, genuinely encoded frame by
+  // frame (not a fake single-frame "animation"). Captures the finished card
+  // once via html2canvas, then composites N frames with a black overlay
+  // fading from opaque to transparent, encoded with gifenc (pure JS, no
+  // web worker asset needed — simpler to ship than gif.js). ----
+  async function exportAnimatedGif() {
+    setBatchExporting(true);
+    toast('Rendering animation…');
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { GIFEncoder, quantize, applyPalette } = await import('gifenc');
+      const node = cardRef.current;
+      const scale = size.w / node.getBoundingClientRect().width;
+      const sourceCanvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
+
+      const FRAMES = 10, HOLD_FRAMES = 4;
+      const gif = GIFEncoder();
+      const work = document.createElement('canvas');
+      work.width = sourceCanvas.width;
+      work.height = sourceCanvas.height;
+      const ctx = work.getContext('2d');
+      const fadeBase = data.layout === 'light' ? [244, 242, 238] : [11, 12, 14];
+
+      for (let i = 0; i <= FRAMES; i++) {
+        ctx.drawImage(sourceCanvas, 0, 0);
+        const alpha = 1 - i / FRAMES;
+        if (alpha > 0.01) {
+          ctx.fillStyle = `rgba(${fadeBase[0]},${fadeBase[1]},${fadeBase[2]},${alpha})`;
+          ctx.fillRect(0, 0, work.width, work.height);
+        }
+        const { data: pixels } = ctx.getImageData(0, 0, work.width, work.height);
+        const palette = quantize(pixels, 256);
+        const index = applyPalette(pixels, palette);
+        gif.writeFrame(index, work.width, work.height, { palette, delay: i === FRAMES ? 0 : 60 });
+      }
+      // Hold on the fully-revealed frame so it doesn't look like it just ends abruptly
+      ctx.drawImage(sourceCanvas, 0, 0);
+      const { data: holdPixels } = ctx.getImageData(0, 0, work.width, work.height);
+      const holdPalette = quantize(holdPixels, 256);
+      const holdIndex = applyPalette(holdPixels, holdPalette);
+      for (let h = 0; h < HOLD_FRAMES; h++) {
+        gif.writeFrame(holdIndex, work.width, work.height, { palette: holdPalette, delay: 90 });
+      }
+      gif.finish();
+
+      const blob = new Blob([gif.bytes()], { type: 'image/gif' });
+      const link = document.createElement('a');
+      link.download = `${slugify(data.projectName)}.gif`;
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      toast('Animated GIF downloaded');
+    } catch (err) {
+      toast('GIF export failed — try again, or use a static export instead');
+    }
+    setBatchExporting(false);
   }
 
   async function copyImage() {
@@ -958,6 +1030,10 @@ export default function Editor() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
             <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+            <button className="btn secondary" onClick={() => exportImage('pdf')}>Download PDF</button>
+            <button className="btn secondary" onClick={exportAnimatedGif} disabled={batchExporting}>{batchExporting ? '...' : 'Animated GIF'}</button>
           </div>
           <button className="btn secondary" style={{ width: '100%', marginTop: 8 }} onClick={copyImage}>Copy image</button>
           <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={exportAllPlatforms} disabled={batchExporting}>

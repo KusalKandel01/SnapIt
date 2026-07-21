@@ -227,9 +227,17 @@ Charts, extending the same `data.layers` array from Phase 2 (backward compatible
 
 **Not done, stated plainly — this is genuinely half of Phase 8:** Nepal province maps and world maps. These need real GeoJSON geographic data, which is a different kind of asset entirely (not user-entered data like chart values — actual shape/boundary data that has to be sourced, and adds real payload weight to the app). Charts were the tractable half of this phase; maps remain a distinct, separately-scoped piece of work.
 
-## Phase 9+ roadmap
+## Phase 9 (buildable half) — complete: PDF and animated GIF export
 
-**Phase 9 (Publishing) — split:** PDF/animated export are buildable now, similar shape to the existing PNG/JPEG export. Scheduled publishing and platform connections still need you to register developer apps with Meta/TikTok/X and get them approved — that's a real-world process outside what code can shortcut.
+- **PDF export**: added via `jspdf` (verified as a real package via `npm view` before adding — same discipline applied to `gifenc` below). The PDF page is sized in points to match the card's *own* aspect ratio (`size.w/h * 0.75`), not forced onto a fixed Letter/A4 page — a Story-ratio card on a Letter page would otherwise render tiny or spill off the edge.
+- **Animated GIF export**: a genuine frame-by-frame encode (not a fake single-static-frame "animation"), via `gifenc` (pure JS, no web-worker asset to manage — simpler to ship correctly than `gif.js`). Captures the finished card once through `html2canvas`, then composites 11 frames with a black/page-color overlay fading from fully opaque to fully transparent (a fade-in reveal), plus 4 held frames at the end so it doesn't look like it cuts off abruptly. Quantized and palette-applied per frame via `gifenc`'s own utilities.
+- Both are lazy-loaded (`await import('jspdf')` / `await import('gifenc')`) exactly like the existing `html2canvas`/`jszip` pattern — confirmed via the build output that the Editor's own bundle size didn't grow (still 13.3 kB): these libraries are only fetched when the corresponding button is actually clicked.
+
+**Scope note**: this is a fade-in reveal, not per-layer sequential animation (each text/image layer appearing one at a time) — that would require re-rendering the live DOM per frame with layer opacities temporarily mutated, a meaningfully bigger lift than compositing one already-captured image. Flagging as a real, separate possible enhancement rather than pretending this already does that.
+
+**Still open from Phase 9**: scheduled publishing and direct platform connections — blocked on the user registering developer apps with Meta/TikTok/X and getting them approved, a real-world process no amount of code can shortcut.
+
+## Phase 10+ roadmap
 
 **Phase 10 (Collaboration):** needs a real backend (database + auth). Biggest architecture change on the list — should be its own initiative, not squeezed into this client-only app.
 
@@ -241,7 +249,7 @@ Charts, extending the same `data.layers` array from Phase 2 (backward compatible
 
 **Phase 14 (Plugin marketplace):** its own product, out of scope here.
 
-**Recommendation:** Phases 1 through 7 are fully complete, Phase 8's tractable half (charts) is done too — maps are real, separate scope needing GeoJSON data sourcing. Everything remaining either needs a decision from you (backend for collaboration, developer-app approvals for scheduled publishing) or is smaller-scope polish (Phase 9's PDF/animated export, Phase 11 productivity tools, Phase 12's remaining accessibility items) that can proceed anytime without new infrastructure.
+**Recommendation:** Phases 1 through 8 (charts half) and Phase 9's buildable half (PDF/animated export) are all complete. Everything remaining genuinely needs a decision from you first: a backend for Phase 10 (collaboration), developer-app approvals for Phase 9's scheduled publishing, or an LLM/geodata provider choice for smaller items (Phase 8's maps, Phase 12's auto alt-text). Phase 11 (productivity tools — command palette, quick search, recent projects) remains the one meaningful chunk that's both unstarted and needs zero new decisions.
 
 ## API keys / external services
 

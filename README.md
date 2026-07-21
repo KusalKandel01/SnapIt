@@ -5,7 +5,7 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 ## What's included
 
 - `pages/index.js` — dashboard
-- `pages/editor.js` — the main card builder: 4 layouts, unlimited text/image layers with typography controls and drag-resize, platform sizes, drag-and-drop uploads, video frame capture, stock photo search, AI Assist, emoji picker, customizable photo fade + page color, version history, batch export, save/load
+- `pages/editor.js` — the main card builder: 4 layouts, unlimited text/image/chart layers with typography controls and drag-resize, platform sizes, drag-and-drop uploads, video frame capture, stock photo search, AI Assist, emoji picker, customizable photo fade + page color, version history, PDF/animated-GIF/batch export, save/load
 - `pages/media.js` — media library (IndexedDB): upload once, reuse across every project
 - `pages/news.js` — News Digest: RSS-based, attribution-first headline aggregation
 - `pages/api/news.js` — server-side RSS/Atom parser (regex-based, no XML library dependency)

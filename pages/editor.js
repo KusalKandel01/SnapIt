@@ -97,6 +97,7 @@ export default function Editor() {
   const [showHistory, setShowHistory] = useState(false);
   const [batchExporting, setBatchExporting] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [newsSourceLink, setNewsSourceLink] = useState('');
   const [selectedLayerId, setSelectedLayerId] = useState(null);
   const layerDragState = useRef(null);
   const dragState = useRef(null);
@@ -115,6 +116,8 @@ export default function Editor() {
       if (preset) {
         setData(d => ({ ...d, ...JSON.parse(preset) }));
         sessionStorage.removeItem('snapstudio:preset');
+        const link = sessionStorage.getItem('snapstudio:newsSourceLink');
+        if (link) { setNewsSourceLink(link); sessionStorage.removeItem('snapstudio:newsSourceLink'); }
       } else {
         const draft = readDraft();
         if (draft) setData(d => ({ ...d, ...draft }));
@@ -543,6 +546,11 @@ export default function Editor() {
             </h1>
           )}
           <p className="page-sub">Build one card, pick a platform size, export or copy it straight to your clipboard. Every change autosaves — closing the tab never loses your work.</p>
+          {newsSourceLink && (
+            <p style={{ fontSize: 11.5, color: 'var(--brass)', background: 'rgba(185,139,62,.08)', border: '1px solid var(--brass)', borderRadius: 6, padding: '6px 10px', display: 'inline-block' }}>
+              Started from a News Digest item — include <a href={newsSourceLink} target="_blank" rel="noreferrer" style={{ color: 'var(--brass)' }}>this source link</a> in your actual post caption when you publish.
+            </p>
+          )}
         </div>
         <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
           <button className="btn secondary" onClick={() => { saveVersionNow(data); toast('Version saved now'); }}>Save version now</button>

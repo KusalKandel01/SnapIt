@@ -7,6 +7,8 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 - `pages/index.js` — dashboard
 - `pages/editor.js` — the main card builder: 4 layouts, unlimited text/image layers with typography controls and drag-resize, platform sizes, drag-and-drop uploads, video frame capture, stock photo search, AI Assist, emoji picker, customizable photo fade + page color, version history, batch export, save/load
 - `pages/media.js` — media library (IndexedDB): upload once, reuse across every project
+- `pages/news.js` — News Digest: RSS-based, attribution-first headline aggregation
+- `pages/api/news.js` — server-side RSS/Atom parser (regex-based, no XML library dependency)
 - `pages/brand.js` — multiple named brand kits (logo + name each), switch the active one
 - `pages/templates.js` — 23 starting points across Nepal-specific occasions and worldwide formats
 - `pages/brand.js` — logo + brand name (saved in your browser)
@@ -48,6 +50,14 @@ The stock photo search in the Editor won't return results until this is set — 
 3. Restart `npm run dev`
 
 Without a key, the AI Assist buttons in the Editor return a clear error explaining what's missing — nothing else in the app is affected.
+
+## News Digest
+
+Go to `/news`, add RSS feed URLs (not regular webpage URLs — the feed itself, usually ending in `/feed`, `/rss`, or `rss.xml`), click "Refresh digest." Click "Start a post" on any headline and it opens the Editor pre-filled with that headline, the source name, and a caption crediting it — you write your own take, the source stays visible.
+
+**Finding real feed URLs**: a verified directory of Nepal-focused RSS feeds exists at https://rss.feedspot.com/nepal_news_rss_feeds/ — copy the actual feed URL (not the outlet's homepage) from there. Many outlets also publish a `/feed` or `/rss` page listing their category-specific feeds directly on their own site.
+
+**Deliberately not built**: scraping a site's regular web pages for headlines, or rewriting article content to obscure its source. See "Declined features" above for why.
 
 ## Push to GitHub
 

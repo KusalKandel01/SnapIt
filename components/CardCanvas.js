@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import { getDisplayDims } from '../lib/dims';
+import { NEPAL_MAP_VIEWBOX, NEPAL_PROVINCES } from '../lib/nepalMap';
 
 const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLayerMouseDown, onLayerResizeMouseDown }, ref) {
   const {
@@ -111,6 +112,25 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
 
   const CHART_PALETTE = ['#b98b3e', '#3e6259', '#9c3b3b', '#8a6fb0', '#4a7fa8', '#c99c4c'];
 
+  function renderNepalMap(l, wPx, hPx) {
+    const highlighted = new Set(l.highlightedProvinces || []);
+    const highlightColor = l.color || '#b98b3e';
+    return (
+      <svg viewBox={NEPAL_MAP_VIEWBOX} width={wPx} height={hPx}>
+        {Object.entries(NEPAL_PROVINCES).map(([name, d]) => (
+          <path
+            key={name}
+            d={d}
+            fill={highlighted.has(name) ? highlightColor : '#3a4453'}
+            stroke="#0b0c0e"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+        ))}
+      </svg>
+    );
+  }
+
   function renderChartSVG(l, wPx, hPx) {
     const rows = parseChartData(l.dataText);
     const vbW = 200, vbH = 130;
@@ -178,6 +198,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
   const layersOverlay = layers.filter(l => l.visible !== false).map(l => {
     const isImage = l.type === 'image';
     const isChart = l.type === 'chart';
+    const isMap = l.type === 'map';
     const isSelected = selectedLayerId === l.id;
     const commonProps = {
       key: l.id,
@@ -193,6 +214,17 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
         userSelect: 'none', zIndex: 6
       }
     };
+
+    if (isMap) {
+      const wPx = ((l.width || 45) / 100) * dispW;
+      const hPx = ((l.height || 25) / 100) * dispW;
+      return (
+        <div {...commonProps} style={{ ...commonProps.style, width: wPx, height: hPx, background: 'rgba(255,255,255,.92)', borderRadius: 6, padding: 4, boxShadow: '0 2px 10px rgba(0,0,0,.3)' }}>
+          {renderNepalMap(l, wPx - 8, hPx - 8)}
+          {isSelected && resizeHandle(l.id)}
+        </div>
+      );
+    }
 
     if (isChart) {
       const wPx = ((l.width || 40) / 100) * dispW;
@@ -212,7 +244,7 @@ const CardCanvas = forwardRef(function CardCanvas({ data, selectedLayerId, onLay
         <div {...commonProps} style={{ ...commonProps.style, width: wPx, height: hPx }}>
           <img
             src={l.src}
-            alt=""
+            alt={l.alt || ''}
             style={{
               width: '100%', height: '100%', objectFit: 'cover', display: 'block',
               borderRadius: shapeRadius(l.shape, wPx, hPx),

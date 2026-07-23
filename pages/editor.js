@@ -8,6 +8,9 @@ import useToast from '../components/useToast';
 import { useAutosave, readDraft } from '../components/useAutosave';
 import { PLATFORM_GROUPS, findSize } from '../lib/platformSizes';
 import { getActiveKit } from '../lib/brandKits';
+import { saveProject as saveToProjectsLib } from '../lib/projects';
+import { contrastRatio, contrastVerdict } from '../lib/contrast';
+import { NEPAL_PROVINCE_NAMES } from '../lib/nepalMap';
 
 const DEFAULT_DATA = {
   projectName: 'Untitled project',
@@ -60,9 +63,9 @@ const TEXT_PRESETS = [
 // horizontal bounds for text (which IS precise, width is a known field) and
 // full horizontal+vertical bounds for images (both dimensions are known).
 function layerOutOfBounds(l) {
-  const halfW = (l.width || (l.type === 'image' || l.type === 'chart' ? 25 : 85)) / 2;
+  const halfW = (l.width || (l.type === 'image' || l.type === 'chart' || l.type === 'map' ? 25 : 85)) / 2;
   const xOut = (l.x - halfW < -0.5) || (l.x + halfW > 100.5);
-  if (l.type === 'image' || l.type === 'chart') {
+  if (l.type === 'image' || l.type === 'chart' || l.type === 'map') {
     const halfH = (l.height || 25) / 2;
     const yOut = (l.y - halfH < -0.5) || (l.y + halfH > 100.5);
     return xOut || yOut;
@@ -77,6 +80,17 @@ function SectionHeader({ n, title }) {
       <span className="title">{title}</span>
       <span className="rule" />
     </div>
+  );
+}
+
+function ContrastBadge({ fg, bg, label }) {
+  const ratio = contrastRatio(fg, bg);
+  const verdict = contrastVerdict(ratio);
+  const color = verdict.pass ? 'var(--pine)' : 'var(--proof-red)';
+  return (
+    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color, marginLeft: 8 }} title={`${ratio.toFixed(1)}:1 contrast ratio, ${label}`}>
+      {ratio.toFixed(1)}:1 — {verdict.level}
+    </span>
   );
 }
 
@@ -98,6 +112,9 @@ export default function Editor() {
   const [batchExporting, setBatchExporting] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [newsSourceLink, setNewsSourceLink] = useState('');
+  const [currentProjectId, setCurrentProjectId] = useState(null);
+  const [cbMode, setCbMode] = useState('none');
+  const [altTextLoading, setAltTextLoading] = useState(null);
   const [selectedLayerId, setSelectedLayerId] = useState(null);
   const layerDragState = useRef(null);
   const dragState = useRef(null);
@@ -118,6 +135,8 @@ export default function Editor() {
         sessionStorage.removeItem('snapstudio:preset');
         const link = sessionStorage.getItem('snapstudio:newsSourceLink');
         if (link) { setNewsSourceLink(link); sessionStorage.removeItem('snapstudio:newsSourceLink'); }
+        const openId = sessionStorage.getItem('snapstudio:openProjectId');
+        if (openId) { setCurrentProjectId(openId); sessionStorage.removeItem('snapstudio:openProjectId'); }
       } else {
         const draft = readDraft();
         if (draft) setData(d => ({ ...d, ...draft }));
@@ -221,6 +240,17 @@ export default function Editor() {
     setData(d => ({ ...d, layers: [...(d.layers || []), newLayer] }));
     setSelectedLayerId(id);
   }
+
+  function addMapLayer() {
+    const id = `layer-${Date.now()}`;
+    const newLayer = {
+      id, type: 'map', highlightedProvinces: ['Bagmati'], color: '#b98b3e',
+      x: 50, y: 50, width: 45, height: 25,
+      rotation: 0, opacity: 1, visible: true, locked: false
+    };
+    setData(d => ({ ...d, layers: [...(d.layers || []), newLayer] }));
+    setSelectedLayerId(id);
+  }
   function updateLayer(id, patch) {
     setData(d => ({ ...d, layers: d.layers.map(l => l.id === id ? { ...l, ...patch } : l) }));
   }
@@ -275,7 +305,7 @@ export default function Editor() {
     if (!layer || layer.locked) return;
     e.preventDefault();
     e.stopPropagation();
-    const isImage = layer.type === 'image' || layer.type === 'chart';
+    const isImage = layer.type === 'image' || layer.type === 'chart' || layer.type === 'map';
     resizeDragState.current = {
       id, isImage,
       startX: e.clientX, startY: e.clientY,
@@ -464,6 +494,21 @@ export default function Editor() {
     setAiLoading('');
   }
 
+  async function generateAltText(layerId, imageSrc) {
+    if (!imageSrc || !imageSrc.startsWith('data:')) {
+      toast('Alt-text generation needs an uploaded image (not an external URL)');
+      return;
+    }
+    setAltTextLoading(layerId);
+    try {
+      const res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: 'imageAlt', imageDataUrl: imageSrc }) });
+      const json = await res.json();
+      if (json.error) toast(json.error);
+      else { updateLayer(layerId, { alt: json.text }); toast('Alt text generated'); }
+    } catch (err) { toast('Alt-text request failed — check your connection'); }
+    setAltTextLoading(null);
+  }
+
   async function exportImage(format) {
     const html2canvas = (await import('html2canvas')).default;
     const node = cardRef.current;
@@ -567,6 +612,12 @@ export default function Editor() {
     link.href = URL.createObjectURL(blob);
     link.click();
     toast('Project saved as a file');
+  }
+
+  function saveToProjects() {
+    const saved = saveToProjectsLib({ id: currentProjectId, name: data.projectName || 'Untitled project', data });
+    setCurrentProjectId(saved.id);
+    toast(`Saved to Projects as "${saved.name}"`);
   }
 
   function loadProject(e) {
@@ -690,6 +741,17 @@ export default function Editor() {
             <p style={{ fontSize: 11, color: 'var(--rule-light)', marginBottom: 14 }}>No logo set yet — add one in <a href="/brand" style={{ color: 'var(--brass)' }}>Brand Kit</a> to show it on your cards.</p>
           )}
 
+          <div className="field">
+            <label id="cb-label">Colorblind preview</label>
+            <div role="group" aria-labelledby="cb-label" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <button className={`btn ${cbMode === 'none' ? '' : 'secondary'}`} onClick={() => setCbMode('none')} style={{ fontSize: 10.5 }}>Normal</button>
+              <button className={`btn ${cbMode === 'protanopia' ? '' : 'secondary'}`} onClick={() => setCbMode('protanopia')} style={{ fontSize: 10.5 }}>Protanopia</button>
+              <button className={`btn ${cbMode === 'deuteranopia' ? '' : 'secondary'}`} onClick={() => setCbMode('deuteranopia')} style={{ fontSize: 10.5 }}>Deuteranopia</button>
+              <button className={`btn ${cbMode === 'tritanopia' ? '' : 'secondary'}`} onClick={() => setCbMode('tritanopia')} style={{ fontSize: 10.5 }}>Tritanopia</button>
+            </div>
+            <p style={{ fontSize: 10, color: 'var(--rule-light)', marginTop: 4 }}>Simulates how this card looks with each color vision type — preview only, doesn't affect the export.</p>
+          </div>
+
           <SectionHeader n="02" title="Typography & Color" />
           <div className="field">
             <label htmlFor="font-select">Font</label>
@@ -702,6 +764,7 @@ export default function Editor() {
           <div className="field">
             <label htmlFor="accent-color">Accent color</label>
             <input id="accent-color" type="color" value={data.color} onChange={e => set('color', e.target.value)} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+            <ContrastBadge fg="#ffffff" bg={data.color} label="white text on this" />
           </div>
           <div className="field">
             <label htmlFor="page-color">Page / canvas color</label>
@@ -733,6 +796,7 @@ export default function Editor() {
             </label>
           </div>
           <button className="btn secondary" style={{ width: '100%', marginBottom: 10 }} onClick={addChartLayer}>+ Chart layer</button>
+          <button className="btn secondary" style={{ width: '100%', marginBottom: 10 }} onClick={addMapLayer}>+ Nepal map layer</button>
           {data.layers.length === 0 && <p style={{ fontSize: 11, color: 'var(--rule-light)', marginBottom: 14 }}>No extra layers yet.</p>}
           {data.layers.map(l => (
             <div key={l.id} className="card-panel" style={{ padding: 10, marginBottom: 8, border: selectedLayerId === l.id ? '1px solid var(--brass)' : '1px solid var(--rule)' }}>
@@ -741,11 +805,12 @@ export default function Editor() {
                   <img src={l.src} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: l.shape === 'circle' ? '50%' : 3, flexShrink: 0 }} />
                 )}
                 {l.type === 'chart' && <span style={{ fontSize: 14, flexShrink: 0 }}>📊</span>}
+                {l.type === 'map' && <span style={{ fontSize: 14, flexShrink: 0 }}>🗺️</span>}
                 <span
                   onClick={() => setSelectedLayerId(l.id)}
                   style={{ flex: 1, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selectedLayerId === l.id ? 'var(--brass)' : 'var(--white)' }}
                 >
-                  {l.type === 'image' ? 'Image layer' : l.type === 'chart' ? `${l.chartType || 'bar'} chart` : (l.text || '(empty text)')}
+                  {l.type === 'image' ? 'Image layer' : l.type === 'chart' ? `${l.chartType || 'bar'} chart` : l.type === 'map' ? 'Nepal map' : (l.text || '(empty text)')}
                   {layerOutOfBounds(l) && <span title="This layer extends past the card edge" style={{ marginLeft: 4 }}>⚠️</span>}
                 </span>
                 <button className="btn secondary" aria-label={l.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => updateLayer(l.id, { visible: l.visible === false ? true : false })} style={{ padding: '4px 7px', fontSize: 11 }}>{l.visible === false ? '🙈' : '👁'}</button>
@@ -755,6 +820,40 @@ export default function Editor() {
                 <button className="btn secondary" aria-label="Duplicate layer" onClick={() => duplicateLayer(l.id)} style={{ padding: '4px 7px', fontSize: 11 }}>⧉</button>
                 <button onClick={() => deleteLayer(l.id)} aria-label="Delete layer" style={{ background: 'none', border: 'none', color: 'var(--proof-red)', cursor: 'pointer', fontSize: 15, padding: '4px 6px' }}>×</button>
               </div>
+              {selectedLayerId === l.id && l.type === 'map' && (
+                <div>
+                  <div className="field">
+                    <label id={`prov-${l.id}`}>Highlighted province(s)</label>
+                    <div role="group" aria-labelledby={`prov-${l.id}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+                      {NEPAL_PROVINCE_NAMES.map(name => {
+                        const active = (l.highlightedProvinces || []).includes(name);
+                        return (
+                          <button
+                            key={name}
+                            className={`btn ${active ? '' : 'secondary'}`}
+                            style={{ fontSize: 10 }}
+                            onClick={() => {
+                              const current = l.highlightedProvinces || [];
+                              const next = active ? current.filter(n => n !== name) : [...current, name];
+                              updateLayer(l.id, { highlightedProvinces: next });
+                            }}
+                          >
+                            {name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Highlight color</label>
+                    <input type="color" value={l.color} onChange={e => updateLayer(l.id, { color: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+                  </div>
+                  <Stepper label="Width" value={l.width} onChange={v => updateLayer(l.id, { width: v })} min={15} max={100} step={2} unit="%" />
+                  <Stepper label="Height" value={l.height} onChange={v => updateLayer(l.id, { height: v })} min={10} max={100} step={2} unit="%" />
+                  <Stepper label="Rotation" value={l.rotation || 0} onChange={v => updateLayer(l.id, { rotation: v })} min={-180} max={180} step={5} unit="°" />
+                  <p style={{ fontSize: 10, color: 'var(--rule-light)' }}>Simplified boundaries derived from real Nepal administrative GeoJSON data — decorative accuracy, not survey-grade.</p>
+                </div>
+              )}
               {selectedLayerId === l.id && l.type === 'chart' && (
                 <div>
                   <div className="field">
@@ -801,9 +900,16 @@ export default function Editor() {
                       <input type="color" value={l.borderColor} onChange={e => updateLayer(l.id, { borderColor: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
                     </div>
                   )}
+                  <div className="field">
+                    <label>Alt text (screen readers)</label>
+                    <textarea rows={2} value={l.alt || ''} onChange={e => updateLayer(l.id, { alt: e.target.value })} placeholder="Describe what's in this image" />
+                    <button className="btn secondary" style={{ width: '100%', marginTop: 6, fontSize: 11 }} onClick={() => generateAltText(l.id, l.src)} disabled={altTextLoading === l.id}>
+                      {altTextLoading === l.id ? 'Looking at image…' : '✨ Generate with AI'}
+                    </button>
+                  </div>
                 </div>
               )}
-              {selectedLayerId === l.id && l.type !== 'image' && l.type !== 'chart' && (
+              {selectedLayerId === l.id && l.type !== 'image' && l.type !== 'chart' && l.type !== 'map' && (
                 <div>
                   <div className="field">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -818,6 +924,7 @@ export default function Editor() {
                   <div className="field">
                     <label>Color</label>
                     <input type="color" value={l.color} onChange={e => updateLayer(l.id, { color: e.target.value })} style={{ width: 50, height: 30, border: 'none', background: 'none' }} />
+                    <ContrastBadge fg={l.color} bg={data.pageColor || (data.layout === 'light' ? '#f4f2ee' : '#0b0c0e')} label="vs. page color (photos may differ)" />
                   </div>
                   <label className="checkline" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rule-light)', marginBottom: 10 }}>
                     <input type="checkbox" checked={!!l.bold} onChange={e => updateLayer(l.id, { bold: e.target.checked })} /> Bold
@@ -1039,6 +1146,7 @@ export default function Editor() {
           <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={exportAllPlatforms} disabled={batchExporting}>
             {batchExporting ? 'Rendering all sizes…' : 'Export for Instagram, X, Facebook, TikTok — all at once'}
           </button>
+          <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={saveToProjects}>Save to Projects</button>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <button className="btn secondary" onClick={saveProject}>Save as file</button>
             <label className="btn secondary" style={{ textAlign: 'center', cursor: 'pointer' }}>
@@ -1049,11 +1157,23 @@ export default function Editor() {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
+          <svg width="0" height="0" style={{ position: 'absolute' }}>
+            <defs>
+              {/* Standard color-vision-deficiency simulation matrices (Brettel/Vienot-derived,
+                  the same values used throughout accessibility tooling) */}
+              <filter id="cb-protanopia"><feColorMatrix type="matrix" values="0.567,0.433,0,0,0  0.558,0.442,0,0,0  0,0.242,0.758,0,0  0,0,0,1,0" /></filter>
+              <filter id="cb-deuteranopia"><feColorMatrix type="matrix" values="0.625,0.375,0,0,0  0.7,0.3,0,0,0  0,0.3,0.7,0,0  0,0,0,1,0" /></filter>
+              <filter id="cb-tritanopia"><feColorMatrix type="matrix" values="0.95,0.05,0,0,0  0,0.433,0.567,0,0  0,0.475,0.525,0,0  0,0,0,1,0" /></filter>
+            </defs>
+          </svg>
           <div className="proof-frame" style={{ background: 'var(--ink-2)', border: '1px solid var(--rule)' }}>
             <div className="cm-tr" />
             <div className="cm-bl" />
             <div className="proof-stamp">{size.w}×{size.h} · {size.name}</div>
-            <div onMouseDown={(e) => { startDrag(e); setSelectedLayerId(null); }} style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default' }}>
+            <div
+              onMouseDown={(e) => { startDrag(e); setSelectedLayerId(null); }}
+              style={{ cursor: showBgFields && data.mediaType === 'image' ? 'grab' : 'default', filter: cbMode !== 'none' ? `url(#cb-${cbMode})` : 'none' }}
+            >
               <CardCanvas
                 ref={cardRef}
                 data={{ ...data, ratioW: size.w, ratioH: size.h, brandLogo, showLogo }}

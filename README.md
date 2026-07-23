@@ -9,6 +9,12 @@ A multi-page social graphics builder: pick a platform size (Instagram, Facebook,
 - `pages/media.js` — media library (IndexedDB): upload once, reuse across every project
 - `pages/news.js` — News Digest: RSS-based, attribution-first headline aggregation
 - `pages/api/news.js` — server-side RSS/Atom parser (regex-based, no XML library dependency)
+- `pages/projects.js` — Projects library: save, search, duplicate, archive multiple named projects
+- `pages/calendar.js` — Publishing Calendar: local scheduling reminders (not auto-publishing)
+- `components/CommandPalette.js` — Cmd/Ctrl+K quick navigation, available on every page
+- `lib/contrast.js` — real WCAG contrast-ratio math
+- `lib/nepalMap.js` — simplified Nepal province boundaries, derived from real open-source GeoJSON
+- `public/manifest.json`, `public/sw.js` — PWA support: installable, works offline (your projects live in localStorage already)
 - `pages/brand.js` — multiple named brand kits (logo + name each), switch the active one
 - `pages/templates.js` — 23 starting points across Nepal-specific occasions and worldwide formats
 - `pages/brand.js` — logo + brand name (saved in your browser)

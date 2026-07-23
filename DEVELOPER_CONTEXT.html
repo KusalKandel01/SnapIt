@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snap Studio — Developer Context</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1b2430; --ink-2:#232d3c; --paper:#ede7da; --brass:#b98b3e; --brass-dim:#8f6c30;
+    --pine:#3e6259; --rule:#3a4453; --rule-light:#c8c2b2; --proof-red:#9c3b3b;
+    --white:#f7f5ef; --ink-text:#e8e4d9;
+    --font-display:'Fraunces', serif; --font-body:'IBM Plex Sans', sans-serif; --font-mono:'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--ink);color:var(--ink-text);font-family:var(--font-body);line-height:1.65;}
+  .doc-shell{max-width:820px; margin:0 auto; padding:56px 32px 100px 32px;}
+  .doc-header{border-bottom:1px solid var(--rule); padding-bottom:24px; margin-bottom:36px;}
+  .doc-header .kicker{font-family:var(--font-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--brass); margin-bottom:10px;}
+  h1{font-family:var(--font-display); font-style:italic; font-weight:600; font-size:34px; color:var(--white); margin:0 0 8px 0; line-height:1.15;}
+  h1#snap-studio-developer-context{ border:none; padding:0; }
+  h2{font-family:var(--font-display); font-style:italic; font-weight:600; font-size:22px; color:var(--brass); margin:44px 0 14px 0; border-top:1px solid var(--rule); padding-top:28px;}
+  h1 ~ h2:first-of-type{border-top:none; padding-top:0; margin-top:32px;}
+  h3{font-family:var(--font-mono); font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--white); margin:24px 0 10px 0;}
+  p{font-size:15px; color:var(--ink-text); margin:0 0 14px 0;}
+  strong{color:var(--white); font-weight:600;}
+  em{color:var(--rule-light);}
+  a{color:var(--brass); text-decoration:none; border-bottom:1px solid rgba(185,139,62,.35);}
+  a:hover{border-bottom-color:var(--brass);}
+  ul, ol{margin:0 0 16px 0; padding-left:22px;}
+  li{font-size:15px; margin-bottom:8px; color:var(--ink-text);}
+  li > p{margin-bottom:6px;}
+  code{font-family:var(--font-mono); font-size:13px; background:var(--ink-2); color:var(--brass); padding:2px 6px; border-radius:3px; border:1px solid var(--rule);}
+  pre{background:var(--ink-2); border:1px solid var(--rule); border-radius:8px; padding:16px; overflow-x:auto; margin:0 0 18px 0;}
+  pre code{background:none; border:none; padding:0; color:var(--ink-text); font-size:13px; line-height:1.6;}
+  blockquote{border-left:3px solid var(--brass); margin:0 0 16px 0; padding:2px 0 2px 16px; color:var(--rule-light); font-style:italic;}
+  table{width:100%; border-collapse:collapse; margin:0 0 18px 0; font-size:14px;}
+  th, td{border:1px solid var(--rule); padding:8px 12px; text-align:left;}
+  th{background:var(--ink-2); font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--brass);}
+  hr{border:none; border-top:1px solid var(--rule); margin:32px 0;}
+  .doc-footer{margin-top:60px; padding-top:20px; border-top:1px solid var(--rule); font-family:var(--font-mono); font-size:11px; color:var(--rule-light);}
+  ::selection{background:var(--brass); color:var(--ink);}
+  @media print {
+    body{background:#fff; color:#111;}
+    .doc-shell{max-width:100%;}
+  }
+</style>
+</head>
+<body>
+<div class="doc-shell">
+<div class="doc-header">
+  <div class="kicker">Snap Studio · Internal Reference</div>
+</div>
+<h1 id="snap-studio-developer-context">Snap Studio — Developer Context</h1>
+<p>This document exists so anyone (human or AI) picking up this project doesn't have to reconstruct decisions from scratch. Read this before changing anything.</p>
+<h2 id="what-this-actually-is">What this actually is</h2>
+<p>A Next.js web app for building social media graphic cards (news alerts, quotes, stats, announcements) for Nepal-specific occasions and worldwide use cases, sized correctly for every major platform, with a logo/brand kit, exported as images.</p>
+<p><strong>Primary users:</strong> social media managers, small businesses, community organizers — likely including Nepali diaspora / Nepal-based creators, given the explicit Nepal-focused template set requested.</p>
+<p><strong>Core promise the product makes:</strong> build one card, get it sized correctly for wherever you're posting it, without needing separate design tools per platform.</p>
+<h2 id="stack">Stack</h2>
+<ul>
+<li>Next.js 14.2.35 (Pages Router, not App Router — kept simple deliberately, no App Router complexity was needed for this scope)</li>
+<li>React 18</li>
+<li>No CSS framework — hand-written CSS custom properties in <code>styles/globals.css</code>, no Tailwind</li>
+<li><code>html2canvas</code> for DOM → image export</li>
+<li><code>jszip</code> for batch multi-file export</li>
+<li>Two external APIs, both proxied server-side so keys never reach the browser: Unsplash (stock photos) and LanguageTool (grammar check)</li>
+</ul>
+<h2 id="file-map-as-of-last-edit">File map (as of last edit)</h2>
+<pre><code>pages/
+  index.js        dashboard
+  editor.js        the main card builder — biggest file, most logic lives here
+  templates.js     35 preset starting points, split into Nepal / Worldwide groups
+  brand.js         logo + brand name, saved to localStorage
+  _app.js          imports global CSS, nothing else
+  api/
+    stock.js       proxies Unsplash search — requires UNSPLASH_ACCESS_KEY env var
+    grammar.js     proxies LanguageTool's public check endpoint, no key needed
+components/
+  CardCanvas.js    the actual renderer — 4 layouts (dark/light/quote/stat), takes a `data` object, forwardRef so html2canvas can capture it
+  Layout.js        sidebar nav + brand logo display, wraps every page
+  useToast.js      tiny toast notification hook
+  useAutosave.js   autosave + version history hook (see &quot;Autosave model&quot; below)
+  Stepper.js       +/- numeric input component — NEW, replaces range sliders (see &quot;In progress&quot; below)
+  DropZone.js      drag-and-drop file upload component — NEW (see &quot;In progress&quot; below)
+lib/
+  platformSizes.js single source of truth for every platform's real pixel dimensions
+  dims.js          shared clamped-display-size math (used by both CardCanvas and Templates thumbnails — this used to be duplicated and buggy, now it's one function both consume)
+</code></pre>
+<h2 id="the-data-object-card-state-shape">The <code>data</code> object (card state shape)</h2>
+<p>This is the shape <code>editor.js</code> keeps in React state, passed into <code>CardCanvas</code>, and is what save/load JSON round-trips:</p>
+<pre><code class="language-js">{
+  layout: 'dark' | 'light' | 'quote' | 'stat',
+  align: 'left' | 'center',
+  color: '#hex',          // accent color used across whichever layout
+  font: &quot;'Anton',sans-serif&quot; | ... ,  // headline font for the CARD content (independent of the app's own UI font)
+  headSize: number, bodySize: number,
+  mediaType: 'image' | 'video',
+  bg: 'url or data-uri',   // background image
+  videoUrl: 'url or blob',  // only used when mediaType === 'video'
+  panX: 0-100, panY: 0-100, zoom: 100-250,  // background image framing
+  watermark, kicker, headline, bannerLines, caption, cornerTag,  // dark/light layout fields
+  quoteText, quoteAuthor,   // quote layout fields
+  statNumber, statLabel, statDesc,  // stat layout fields
+  sizeId: 'ig-square' | ... // key into lib/platformSizes.js
+}
+</code></pre>
+<p>Note: all four layouts' fields coexist in one flat object at all times — switching layout doesn't clear the others, so users don't lose typed content by clicking around.</p>
+<h2 id="design-system-read-this-before-touching-any-css">Design system — read this before touching any CSS</h2>
+<p>The first two design passes used a near-black background with a red/vermilion accent and the Anton font everywhere. <strong>That is a known generic "AI-generated UI" default</strong> — flagged explicitly by the frontend-design skill this project uses, and the user correctly called it out as looking like "AI slop." It was replaced. <strong>Do not reintroduce a near-black + vermilion/red-accent + Anton-everywhere combination for the app's own chrome.</strong></p>
+<p>Current direction — a print/proof-house concept, because the product's actual job (producing correctly-sized crops/proofs for many outputs) is genuinely print/photo-production territory:</p>
+<ul>
+<li><strong>Palette:</strong> ink <code>#1B2430</code> (slate, not black), paper <code>#EDE7DA</code>, brass <code>#B98B3E</code> (primary accent), pine <code>#3E6259</code> (secondary), rule <code>#8B93A1</code>-family grays for hairlines, proof-red <code>#9C3B3B</code> reserved only for rare "live" indicators — not used as the primary accent</li>
+<li><strong>Type:</strong> Fraunces (italic serif, display/titles) + IBM Plex Sans (UI body) + IBM Plex Mono (every dimension and timestamp — "1080×1080", version-history dates — reads like real spec data)</li>
+<li><strong>Signature element:</strong> crop-mark brackets around the canvas preview with a rotated proof-stamp label, like a printer's proof sheet</li>
+<li><strong>Important distinction:</strong> the app's own chrome fonts/colors (<code>--font-display</code>, <code>--font-body</code>, <code>--ink</code>, <code>--brass</code>, etc.) are separate CSS variables from the fonts a person picks <em>for their card content</em> (Anton, Oswald, Playfair, Poppins — set via the Font dropdown in the Editor, stored as <code>data.font</code>). Don't conflate these two systems.</li>
+</ul>
+<h2 id="autosave-model">Autosave model</h2>
+<p>Two separate mechanisms, don't merge them:
+1. <strong>Continuous draft</strong> (<code>localStorage['snapstudio:draft']</code>) — saved ~800ms after any edit, every time, no exceptions. This is what guarantees closing the tab or refreshing never loses work. Restored automatically on Editor mount if no template preset was loaded.
+2. <strong>Version history</strong> (<code>localStorage['snapstudio:history']</code>) — a capped array (50 max) of named, timestamped snapshots, but only one gets appended per 10-minute window (<code>SNAPSHOT_INTERVAL_MS</code> in <code>useAutosave.js</code>), not on every keystroke — this was a deliberate fix after the first version spammed a new entry per edit and made the history list useless. <code>deleteVersion(ts)</code> removes one entry; there's also <code>saveVersionNow()</code> for a manual/forced snapshot.</p>
+<h2 id="declined-features-do-not-build-these-and-why">Declined features — do not build these, and why</h2>
+<p>These were explicitly requested during development and explicitly refused. If asked again, the reasoning still applies:</p>
+<ol>
+<li><strong>Auto-fetch a photo of any named person from the internet.</strong> Copyright (most photos aren't licensed for reuse) and privacy/right-of-publicity risk (no way to distinguish public figure from private individual from a name alone). Unsplash stock search is the sanctioned alternative for "fast HQ photo, no upload."</li>
+<li><strong>Scrape competitors' content and social media users' data, presented as original ("live updates," "like we are the one doing all it").</strong> Republishing competitors' work as your own is copyright infringement/plagiarism. Scraping other people's social accounts violates essentially every platform's Terms of Service and is a real privacy problem. <strong>The sanctioned alternative is now built</strong>: <code>pages/news.js</code> — an RSS-based News Digest that shows real headlines with visible attribution and a link back to the source, feeding into a pre-filled Editor post rather than a rewritten disguise.</li>
+<li><strong>Generic "download video/image from any platform" ingestion.</strong> Breaks most platforms' ToS and is copyright-risky at the mechanism level, regardless of the user's actual intent. What <em>is</em> built: upload your own video file or paste a direct (CORS-open) video URL and grab a still frame from it — legitimate because it's the user's own media.</li>
+<li><strong>Auto-scrape a specific news site's rendered pages (not RSS) and rewrite the content in different words to publish as if it's the user's own fast original reporting, with explicit disinterest in attribution.</strong> This came up directly, targeting <code>nepalipaisa.com/news</code> plus "10-20 sources," framed as a daily-automated pipeline. Refused for the same core reason as #2, reinforced: paraphrasing copyrighted journalism to obscure its source is still plagiarism regardless of wording, "hot news" and ToS violations apply, and "I don't care where it comes from" is precisely the disqualifying element, not an incidental detail. Verified in the process that <code>nepalipaisa.com</code> is a registered commercial media company (Nepali Paisa Media Pvt. Ltd.) with an explicit copyright notice and no RSS feed — its <code>/news</code> page is dynamically loaded, not even scrapeable as static HTML without additional tooling. Built the RSS-based News Digest (see #2) as the legitimate version of what was actually wanted: fast access to many sources' headlines, organized daily, feeding into posts.</li>
+</ol>
+<h2 id="real-bug-found-and-fixed-via-actual-exported-output-not-assumption">Real bug found and fixed via actual exported output (not assumption)</h2>
+<p>The user exported real cards at multiple platform sizes and sent back the actual PNGs, which is how this was caught — a visual defect that a clean build can never reveal:</p>
+<ul>
+<li><strong>Background photo letterboxing on tall ratios.</strong> <code>bgStyle</code> set <code>backgroundSize: '${zoom}%'</code> — a single CSS <code>background-size</code> value only sets width; height defaults to <code>auto</code>. On Square (1:1) this was invisible. On Story/TikTok (1080×1920), a normally-proportioned photo's auto-height fell well short of the frame, leaving a visible solid-color gap (mostly hidden at the bottom by the dark fade gradient already being opaque there, but plainly visible at the top where the fade is still near-transparent). <strong>Fixed</strong> by switching the base fit to <code>background-size: cover</code> (always fills the box regardless of aspect ratio) and moving "zoom" to a separate <code>transform: scale()</code> applied on top — so 100% zoom now means "fully covered, no gap" instead of "actual pixel size." Lesson for future work: a clean <code>npm run build</code> and even a correct-looking Square preview do not guarantee correctness at other aspect ratios — when in doubt, check the actual exported file at the extreme ratios (very tall, very wide), not just the default square.</li>
+</ul>
+<h2 id="emoji-support">Emoji support</h2>
+<p>Added <code>components/EmojiPicker.js</code> — a small curated grid (no external dependency, no API call), wired into Kicker, Headline, Caption, Quote text, Stat description, and every text layer. Appends to the end of the field's current value on click. Plain text inputs already supported emoji via normal typing/OS emoji keyboards regardless — this adds a discoverable in-app picker for people who don't know their OS shortcut (Win+. / Cmd+Ctrl+Space).</p>
+<h2 id="grammar-check-removed">Grammar check — removed</h2>
+<p>Per explicit request. <code>pages/api/grammar.js</code> deleted, the "Polish" section and all related state (<code>grammarIssues</code>, <code>grammarChecking</code>, <code>checkGrammar()</code>) removed from <code>editor.js</code>, README updated. If this is ever wanted back, it's a clean re-add: proxy pattern to LanguageTool (or any grammar API) exactly like <code>pages/api/stock.js</code> proxies Unsplash — same shape, different upstream.</p>
+<h2 id="earlier-bugs-found-and-fixed-chronological">Earlier bugs found and fixed (chronological)</h2>
+<ul>
+<li>Template thumbnail sizing used different math than the actual card renderer → thumbnails overflowed/clipped. Fixed by extracting <code>lib/dims.js</code> as the single shared source both <code>CardCanvas.js</code> and <code>templates.js</code> call.</li>
+<li><code>CardCanvas</code>'s display size had no max-height clamp → extreme ratios (Pinterest 2:3, X headers 3:1) rendered broken/squashed previews. Fixed in the same <code>dims.js</code> extraction.</li>
+<li>Dark layout's <code>cornerTag</code> was absolutely positioned independent of the caption text above it → long captions visually overlapped it. Fixed by moving <code>cornerTag</code> into normal document flow after the caption.</li>
+<li>Almost every "Worldwide" template reused one identical stock photo → looked like copy-paste spam. Fixed by adding a solid-color-panel fallback to the Light layout (when <code>bg</code> is empty) and diversifying which templates use a photo at all.</li>
+<li>"Holi Celebration" template put the word "HOLI" into the Stat layout's 96px number slot (built for short numbers) → overflowed. Moved to Dark Alert layout with a normal headline.</li>
+<li><code>pages/api/stock.js</code> hardcoded <code>orientation=squarish</code> regardless of selected platform size → Story/portrait searches still returned square crops. Now takes <code>orientation</code> as a query param, computed from the aspect ratio in <code>editor.js</code>.</li>
+<li>Unsplash attribution was only in an <code>alt</code>/<code>title</code> hover tooltip, which doesn't satisfy Unsplash's terms (visible credit required). Fixed to a visible link under each thumbnail plus a general credit line.</li>
+<li>Naive batch "export all platforms" would have used <code>html2canvas</code>'s uniform <code>scale</code> option to blow up whatever's currently on screen — which only magnifies, it can't reshape a square into a 16:9 without distorting it. Fixed by actually switching <code>sizeId</code> sequentially, waiting a real animation frame for re-render, then capturing each — slower but produces genuinely correct dimensions per platform.</li>
+<li>Next.js was pinned to 14.2.5, which has a disclosed RCE (referenced as CVE-2025-66478 in conversation, patched Dec 2025) — bumped to 14.2.35 before this ever went near Vercel.</li>
+<li>Found via user screenshots, not assumption: a full design-token rename pass had stale <code>var(--gold)</code>, <code>var(--accent)</code>, <code>var(--panel)</code> etc. references left in <code>templates.js</code>, <code>editor.js</code>, <code>index.js</code> after the palette rename — these don't throw build errors (undefined CSS custom properties just fail silently) so <code>npm run build</code> succeeding is <strong>not sufficient proof the UI looks right</strong>. Always grep for stale token names after any design-system rename.</li>
+</ul>
+<h2 id="phase-1-complete">Phase 1 — complete</h2>
+<p>Everything below shipped and is verified against a clean <code>npm run build</code>:
+- Every range slider replaced with <code>components/Stepper.js</code> (+/- numeric input) — headline size, body size, pan X/Y, zoom
+- Every media file input replaced with <code>components/DropZone.js</code> (drag-and-drop, used in Editor for photo/video and in Brand Kit for logo)
+- <code>useAutosave.js</code> finished: continuous draft (never lose progress) separate from named version history (one snapshot per 10 minutes, not per keystroke), plus <code>deleteVersion(ts)</code> and <code>saveVersionNow()</code>, both wired into the Editor's version history panel with a working delete button per entry
+- <code>projectName</code> added to the data shape, editable inline (click the page title), and now drives the filename for PNG/JPEG/zip/JSON exports (via <code>slugify()</code>) instead of a hardcoded name
+- Templates page has a working search box filtering by template name or group label, with a match count
+- Editor sidebar reorganized into six numbered, titled sections (Canvas / Typography &amp; Color / Media / Content / Polish / Export &amp; Project) instead of one long undifferentiated scroll
+- Keyboard accessibility pass: every button/input has proper labels or <code>aria-label</code>s, toggle button groups use <code>role="group"</code> + <code>aria-pressed</code>, a visible focus ring (<code>:focus-visible</code>) was added app-wide, error messages use <code>role="alert"</code>
+- Bonus fix while touching Brand Kit: the logo you import <strong>now actually appears on the exported card</strong> (a "Show logo on card" toggle appears in the Canvas section once a logo exists in Brand Kit) — this was flagged as the single worst gap in the original 100-issue review and had never been fixed until now</p>
+<h2 id="phase-2a-complete">Phase 2a — complete</h2>
+<p>Multi-layer text system, additive on top of any of the 4 base layouts, verified against a clean build:
+- <code>data.layers</code>: array of <code>{ id, text, x, y, fontSize, color, rotation, opacity, bold, visible, locked }</code>, positions stored as <strong>percent of card width/height</strong> so a layer placed on a square card lands in the same relative spot if you switch to a Story or Pinterest ratio
+- <strong>Backwards compatible on purpose</strong>: <code>layers</code> defaults to <code>[]</code> in <code>DEFAULT_DATA</code>, <code>CardCanvas</code> destructures it with a <code>= []</code> fallback, and <code>loadProject()</code> force-fills it on any older saved JSON that predates this feature — old projects load exactly as before, nothing breaks
+- Add/duplicate/delete/hide/lock per layer, each with its own icon-button row in the Layers panel (section 03 in the Editor)
+- Click a layer to select it (shown with a dashed outline on canvas), edit its text/font size/rotation/color/bold inline
+- <strong>Drag directly on the canvas</strong> to reposition a layer, with center-snapping (within 3% of dead-center on either axis snaps to exactly 50%) — same interaction pattern as the existing background-image drag, extracted to work per-layer
+- <strong>Keyboard</strong>: arrow keys nudge the selected layer 1% (5% with Shift), Delete/Backspace removes it — explicitly skipped while focus is in any input/textarea so it never hijacks normal typing
+- Clicking empty canvas space deselects the current layer</p>
+<p><strong>Known scope boundary, stated honestly:</strong> this is unlimited <em>text</em> layers, not yet image/shape/logo layers, resizing via drag handles, grouping, or blend modes — those are still Phase 2b+ per the roadmap below. Rotation, opacity, and lock/hide all work now; resize is font-size-driven rather than a drag handle (a real resize handle is a reasonable next increment if this interaction model proves out).</p>
+<h2 id="phase-2b-complete">Phase 2b — complete</h2>
+<p>Image layers, extending the same <code>data.layers</code> array from Phase 2a — same backward-compatibility guarantee (a layer with no <code>type</code> field is treated as <code>'text'</code>, so every project saved during Phase 2a still loads identically):</p>
+<ul>
+<li><code>+ Image layer</code> button in the Layers panel — upload any photo/graphic, it drops onto the canvas at 25%×25% by default</li>
+<li><strong>Independent width and height per image</strong> — resize each one separately via steppers (not locked to one aspect ratio), so you can genuinely have "small images, multiple images, different shapes and sizes" on one card</li>
+<li><strong>Three shape options</strong>: Square, Rounded, Circle — applied as a clip on the image itself, not a separate mask layer (simpler, and sufficient for the actual use case: profile photos, logos, product shots, badges)</li>
+<li>Border width + color, rotation, opacity — same controls as text layers, shared interaction model (drag to move, arrow keys to nudge, click to select, hide/lock/duplicate/delete)</li>
+<li>Layer list shows a small thumbnail preview for image layers instead of a text snippet, so a project with many layers stays scannable</li>
+</ul>
+<p><strong>Scope boundary, stated honestly:</strong> width/height are set via steppers, not a drag-corner resize handle yet — that's the natural next increment (Phase 2c) once this proves out. No layer reordering (z-index) UI yet either — new layers stack in creation order; a "bring to front / send to back" control is a small, obvious follow-up.</p>
+<h2 id="phase-2c-complete">Phase 2c — complete</h2>
+<p>Shipped in two parts:</p>
+<p><strong>Fade/color controls</strong> (the real gap the user caught: the dark gradient overlay on photos was hardcoded to black with no control at all):
+- <strong><code>data.pageColor</code></strong>: the base canvas color behind everything — visible wherever there's no photo (Dark Alert's black, Light Card's cream). Now a color picker in Typography &amp; Color. Falls back to the original hardcoded defaults if unset, so every prior project renders identically.
+- <strong><code>data.fadeColor</code> + <code>data.fadeStrength</code></strong>: the gradient overlay on background photos is now driven by these two fields instead of a fixed <code>rgba(0,0,0,...)</code> — "Dark fade" / "Light fade" quick buttons plus a full custom color picker, and a strength stepper (0-100%). Implemented via a <code>hexToRgb()</code> helper in <code>CardCanvas.js</code> that builds the gradient's rgba stops from whatever color is chosen. Defaults to black at 78% if unset — pixel-identical to the pre-this-feature look for old projects.
+- Light Card's top photo also got a matching (lighter-touch) fade into the page color at its bottom edge, previously nonexistent.
+- <strong>Text layers now have a <code>width</code> field</strong> (Stepper, 10-100%), replacing a hardcoded <code>maxWidth: 85%</code> — the actual "resize the content box" control, independent of font size.</p>
+<p><strong>Resize + ordering</strong> (the two items explicitly left open after that):
+- <strong>Drag-corner resize handle</strong>: every selected layer (text or image) now shows a small brass dot at its bottom-right corner. Drag it to resize — images resize width and height independently (matches their existing independent steppers), text layers resize box width only (height still follows content naturally). Implemented as a genuine child element positioned relative to the layer's own transformed box, so it correctly follows rotation without extra math.
+- <strong>Layer ordering</strong>: ▲/▼ buttons per layer row move it forward/backward in the stacking order (array order = z-order, later in the array renders on top — this was already true, just needed controls). <code>moveLayer(id, 'up' | 'down' | 'front' | 'back')</code> exists in <code>editor.js</code>; only up/down are exposed in the UI for now, but <code>'front'</code>/<code>'back'</code> are implemented if a dedicated button is ever wanted.</p>
+<p><strong>Known limitation, stated plainly:</strong> resize dragging doesn't compensate for rotation — if a layer is rotated and you drag its corner, the resize direction follows the screen's x/y axes, not the layer's own rotated axes. Fine for the common case (rotate a finished layer occasionally), would feel wrong if someone rotates first and resizes constantly. Flagging it rather than pretending it isn't there.</p>
+<h2 id="phase-3-partial-complete-typography-controls-on-text-layers">Phase 3 (partial) — complete: typography controls on text layers</h2>
+<p>Added to the same per-layer model from Phase 2, backward compatible (all new fields have defaults matching the prior hardcoded look, so every layer saved before this exists renders identically):</p>
+<ul>
+<li><strong>Letter spacing</strong> (<code>data.layers[].letterSpacing</code>, -5 to 20px, default 0 — matches the old unspaced look)</li>
+<li><strong>Line height</strong> (<code>lineHeight</code>, 0.8-2.5×, default 1.2 — matches the prior browser-default rendering closely enough that nothing shifts noticeably on old layers)</li>
+<li><strong>Shadow strength</strong> (<code>shadowStrength</code>, 0-100%, default 50 — the old hardcoded <code>rgba(0,0,0,.5)</code> text-shadow is exactly 50%, so this is genuinely pixel-identical for existing layers, not just "close")</li>
+<li><strong>Text outline/stroke</strong> (<code>strokeWidth</code> + <code>strokeColor</code>, via <code>-webkit-text-stroke</code> — default 0, invisible until turned on)</li>
+</ul>
+<p><strong>Also fixed while building this:</strong> <code>Stepper.js</code> had a latent float-precision bug — repeatedly clicking +/- on a decimal step (like the new 0.1 line-height control) would drift to values like <code>1.0999999999999999</code> because JS floating point subtraction isn't exact. Added a rounding pass keyed to the step's own decimal precision. This was always a risk for any stepper with a non-integer step, just hadn't been exercised until line-height needed one.</p>
+<p><strong>Still open from Phase 3:</strong> curved text and vertical text — flagged from the start as genuinely hard (SVG <code>textPath</code> territory, a different rendering approach entirely from the current absolutely-positioned-div layer model) and deliberately not attempted alongside the straightforward controls above. Preset text styles and automatic text-fitting/overflow warnings are also still open — smaller lifts, reasonable next additions within Phase 3 rather than a new phase.</p>
+<h2 id="phase-3-fully-complete-preset-styles-overflow-warning">Phase 3 — fully complete (preset styles + overflow warning)</h2>
+<ul>
+<li><strong>Preset text styles</strong>: <code>TEXT_PRESETS</code> in <code>editor.js</code> — 6 curated combos (Bold Headline, Subtitle, Fine Caption, Badge/Label, Outlined Pop, Soft Quote), one click applies font size/spacing/weight/shadow/stroke to the selected layer without touching its text, position, or rotation.</li>
+<li><strong>Overflow warning</strong>: <code>layerOutOfBounds()</code> in <code>editor.js</code> shows a ⚠️ next to any layer in the list whose position+size would place it outside the card's 0-100% bounds. <strong>Stated honestly, not oversold</strong>: this is a real but partial check — precise on the horizontal axis for both layer types (width is always a known field), and precise on both axes for images (height is known too), but text layers have dynamic height from wrapping that isn't measured, so vertical overflow isn't checked for text. A true fix would need DOM measurement via refs per layer; this is the pragmatic version that's still genuinely useful.</li>
+<li><strong>Still not attempted</strong>: curved text, vertical text — this remains a real, separate rendering problem (SVG <code>textPath</code>, a different approach from the current div-based layer model), not scoped into this round either.</li>
+</ul>
+<h2 id="phase-4-complete-ai-assist-provider-agnostic">Phase 4 — complete (AI Assist, provider-agnostic)</h2>
+<ul>
+<li><code>pages/api/ai.js</code> — proxies any OpenAI-compatible chat-completions endpoint (works with OpenAI directly, or other providers implementing the same shape). Same privacy pattern as <code>pages/api/stock.js</code>: key lives server-side only.</li>
+<li>Four tasks: <strong>Suggest headlines</strong> (5 options), <strong>Rewrite headline</strong>, <strong>Write caption</strong>, <strong>Suggest hashtags</strong> — a new "AI Assist" section in the Editor (section 05) with a topic input and one button per task. Results render as clickable suggestion chips; clicking applies to the relevant field. Nothing is auto-applied without a click.</li>
+<li><strong>Requires <code>AI_API_KEY</code></strong> (+ optional <code>AI_API_URL</code> / <code>AI_MODEL</code>, defaulting to OpenAI's endpoint and <code>gpt-4o-mini</code>) — without it, the buttons return a clear "not configured" toast, same graceful-degrade pattern as Unsplash search without a key.</li>
+<li><strong>Not done</strong>: background removal, image expansion, AI-generated artwork, readability/accessibility checks, layout/color/typography recommendations. These need different APIs with different cost models (image-editing vs. image-generation vs. text) — deliberately not bundled into one generic proxy, since conflating them would make the env var setup confusing about what each key actually unlocks.</li>
+</ul>
+<h2 id="phase-5-complete-more-templates">Phase 5 — complete (more templates)</h2>
+<p>53 templates now (was 35), still zero duplicates, still split Nepal / Worldwide. Added: Nepal — School Admission, Constitution Day, Earthquake Safety Alert, Monsoon/Flood Alert, Nepal Tourism Promo, Local Business Spotlight, Nepal Budget Update, Teacher's Day, Nepal Job Vacancy. Worldwide — Weekly Roundup, Poll/Ask the Audience, Milestone Celebration, Behind the Scenes, Customer Testimonial, Deadline Reminder, FAQ/Did You Know, Press Release, Award/Recognition, Volunteer Call-Out.</p>
+<h2 id="phase-6-complete-multiple-brand-kits">Phase 6 — complete (multiple brand kits)</h2>
+<ul>
+<li><code>lib/brandKits.js</code> — new data layer: array of <code>{ id, name, logo }</code> kits under <code>localStorage['snapstudio:brandkits']</code>, plus an <code>activeKit</code> pointer. <strong>Migrates automatically</strong> from the old single-kit format (<code>snapstudio:brand</code>) the first time it runs, so nobody who set up a logo before this change loses it.</li>
+<li><code>pages/brand.js</code> rewritten: add/rename/delete kits, each with its own logo, one marked "active." The active kit is what shows in the sidebar (<code>Layout.js</code>) and, if enabled, on exported cards (<code>editor.js</code>'s "Show logo on card" toggle) — both updated to read from <code>getActiveKit()</code> instead of the old single key.</li>
+</ul>
+<h2 id="phase-7-complete-media-library-indexeddb">Phase 7 — complete (media library, IndexedDB)</h2>
+<ul>
+<li><code>lib/mediaLibrary.js</code> — real IndexedDB wrapper (<code>addMedia</code>, <code>listMedia</code>, <code>deleteMedia</code>). Chosen over <code>localStorage</code> deliberately: localStorage has a practical ~5-10MB ceiling across the <em>entire origin</em>, which a handful of real photos blows through; IndexedDB has dramatically more headroom and is still 100% client-side, no backend needed.</li>
+<li><code>pages/media.js</code> — a dedicated library page: upload, browse as a grid, delete, or copy a data URL to paste elsewhere.</li>
+<li><strong>Wired into the Editor</strong>: every background photo upload now also silently saves to the library (best-effort — never blocks or breaks the actual upload if the library save fails), and a "Recent uploads" strip (last 8) appears right under the upload dropzone for one-click reuse across projects.</li>
+<li>Graceful degrade: <code>isIndexedDBAvailable()</code> check — on the rare browser without IndexedDB support, <code>/media</code> shows an explanation instead of a broken page, and the rest of the app (direct upload in the Editor) is unaffected.</li>
+</ul>
+<h2 id="phase-8-partial-complete-charts-as-a-new-layer-type">Phase 8 (partial) — complete: charts as a new layer type</h2>
+<p>Charts, extending the same <code>data.layers</code> array from Phase 2 (backward compatible — a layer with no <code>type</code> or a <code>type</code> other than <code>'chart'</code>/<code>'image'</code> is unaffected):</p>
+<ul>
+<li><strong>New <code>type: 'chart'</code> layer</strong> with <code>chartType: 'bar' | 'pie' | 'line'</code>, <code>dataText</code> (simple <code>"label, value"</code> per line — no separate data-editor UI needed, just a textarea), and <code>color</code></li>
+<li><strong>Hand-rolled SVG rendering</strong> in <code>CardCanvas.js</code> (<code>renderChartSVG()</code>) — deliberately not a charting library dependency. Bar and line charts use the layer's chosen color; pie charts use a fixed 6-color palette (<code>CHART_PALETTE</code>) since a single color can't distinguish slices</li>
+<li>Charts get their own white card background (<code>rgba(255,255,255,.92)</code>) so they stay legible against any card layout/photo — a bar chart in the layer's chosen color directly on a photo would often be unreadable otherwise</li>
+<li>Resize and layer-list integration reuse the exact same code path as image layers (both have independent width/height, both get the drag-corner resize handle, both get full horizontal+vertical overflow-bounds checking) — <code>isImage</code> in the resize handler was broadened to include chart layers rather than writing parallel logic</li>
+<li>Layer list shows a 📊 icon and the chart type instead of a text/image preview</li>
+</ul>
+<p><strong>Nepal province map — now complete</strong>, added later than the rest of Phase 8: <code>lib/nepalMap.js</code> contains real, simplified SVG boundary paths for all 7 provinces, derived from actual open-source GeoJSON (mesaugat/geoJSON-Nepal, sourced from Nepal's official National GeoPortal shapefiles) — fetched and simplified via a Python script (naive point-decimation to ~30-50 points/province, equirectangular projection to a 400×200 viewBox), not hand-drawn approximations. New <code>type: 'map'</code> layer, same pattern as chart/image layers: pick which province(s) to highlight, a highlight color, resize/rotate/position like everything else.</p>
+<p><strong>Still genuinely not done:</strong> a world map. Accurate world GeoJSON is a meaningfully larger asset (many countries' full boundaries) than the 7-province Nepal case, and embedding a low-quality/inaccurate version to check a box would be worse than not having it — deferred as real, separate scope, not silently dropped.</p>
+<h2 id="phase-9-buildable-half-complete-pdf-and-animated-gif-export">Phase 9 (buildable half) — complete: PDF and animated GIF export</h2>
+<ul>
+<li><strong>PDF export</strong>: added via <code>jspdf</code> (verified as a real package via <code>npm view</code> before adding — same discipline applied to <code>gifenc</code> below). The PDF page is sized in points to match the card's <em>own</em> aspect ratio (<code>size.w/h * 0.75</code>), not forced onto a fixed Letter/A4 page — a Story-ratio card on a Letter page would otherwise render tiny or spill off the edge.</li>
+<li><strong>Animated GIF export</strong>: a genuine frame-by-frame encode (not a fake single-static-frame "animation"), via <code>gifenc</code> (pure JS, no web-worker asset to manage — simpler to ship correctly than <code>gif.js</code>). Captures the finished card once through <code>html2canvas</code>, then composites 11 frames with a black/page-color overlay fading from fully opaque to fully transparent (a fade-in reveal), plus 4 held frames at the end so it doesn't look like it cuts off abruptly. Quantized and palette-applied per frame via <code>gifenc</code>'s own utilities.</li>
+<li>Both are lazy-loaded (<code>await import('jspdf')</code> / <code>await import('gifenc')</code>) exactly like the existing <code>html2canvas</code>/<code>jszip</code> pattern — confirmed via the build output that the Editor's own bundle size didn't grow (still 13.3 kB): these libraries are only fetched when the corresponding button is actually clicked.</li>
+</ul>
+<p><strong>Scope note</strong>: this is a fade-in reveal, not per-layer sequential animation (each text/image layer appearing one at a time) — that would require re-rendering the live DOM per frame with layer opacities temporarily mutated, a meaningfully bigger lift than compositing one already-captured image. Flagging as a real, separate possible enhancement rather than pretending this already does that.</p>
+<p><strong>Phase 9's remainder — completed as a local reminder system, explicitly not fake auto-publishing:</strong> <code>lib/projects.js</code> (a real Projects library — multiple named, saved projects, distinct from the single continuous draft/version-history that only ever tracked one project) plus <code>pages/calendar.js</code> (a Publishing Calendar showing projects grouped by a date you assign, from <code>pages/projects.js</code>). This is clearly labeled everywhere it appears as a reminder/organization tool with zero connection to any social platform — it does not post anything anywhere. Building this instead of pretending to have OAuth integrations was the honest choice given the constraint stated up front.</p>
+<p><strong>Truly not built, and why — stated once more, plainly:</strong>
+- <strong>Phase 10 (real collaboration)</strong>: needs a database and auth system. This app is deliberately client-only (a hard requirement from early in the project). Faking multi-user collaboration on top of <code>localStorage</code> would be broken software pretending to work, not a smaller version of the real feature — not attempted.
+- <strong>Phase 14 (plugin marketplace)</strong>: its own product with its own team. Not attempted.
+- <strong>Phase 9's actual platform auto-publishing</strong>: still blocked on the user registering developer apps with Meta/TikTok/X and getting them approved.</p>
+<h2 id="phase-11-complete-projects-library-command-palette-and-the-productivity-layer">Phase 11 — complete: Projects library, command palette, and the productivity layer</h2>
+<ul>
+<li><strong>Projects library</strong> (<code>lib/projects.js</code>, <code>pages/projects.js</code>): save, search by name/tag, duplicate, archive, delete, and reopen full projects — the missing piece that made "recent projects" and "folders" meaningless before, since the app only ever had one current draft. Wired into the Editor via a new "Save to Projects" button (<code>saveToProjects()</code>), separate from the existing "Save as file" JSON export.</li>
+<li><strong>Command palette</strong> (<code>components/CommandPalette.js</code>): Cmd/Ctrl+K from anywhere, arrow-key navigation, jumps to any page. Mounted once in <code>Layout.js</code> so it's available app-wide, not per-page.</li>
+<li><strong>Recent projects / duplicate / archive</strong>: all live in the Projects library above rather than as separate features — one coherent data model instead of parallel ones.</li>
+</ul>
+<p><strong>PWA support — now complete</strong>, added after this doc's first version: <code>public/manifest.json</code> (installable, themed to match the app's own ink/brass palette), a hand-drawn icon set (<code>public/icon-192.png</code>, <code>icon-512.png</code>, <code>favicon.png</code> — drawn directly with PIL after ImageMagick's SVG delegate wasn't available in the build environment, reusing the app's own crop-mark motif rather than a generic icon), and <code>public/sw.js</code> (a real service worker — caches the app shell so the Editor still opens offline, since your actual project data already lives in <code>localStorage</code> and doesn't need network; API routes are explicitly <em>never</em> cached since they need live data and already fail gracefully). Registered in <code>pages/_app.js</code>. Also fixed while in there: every page now gets a real <code>&lt;title&gt;</code> (<code>components/Layout.js</code>) — previously every page showed the generic Next.js default, a gap flagged all the way back in the original 100-issue review and never actually closed until now.</p>
+<p><strong>Still not done from Phase 11:</strong> bulk operations across many projects at once.</p>
+<p><strong>A note on this document's format:</strong> this file is generated from a Markdown source (via Python's <code>markdown</code> library, not hand-transcribed — faithful conversion, not a re-summary) and delivered as standalone HTML per explicit request. If maintaining this going forward, edit-then-regenerate from Markdown is far less error-prone than hand-editing raw HTML for large structural changes; direct HTML edits are fine for small additions like this one.</p>
+<h2 id="phase-12-complete-real-accessibility-tooling">Phase 12 — complete: real accessibility tooling</h2>
+<ul>
+<li><strong>WCAG contrast checker</strong> (<code>lib/contrast.js</code>): actual W3C relative-luminance math, not a cosmetic badge — computes real contrast ratios and reports AA/AAA/Fail against the actual WCAG thresholds (4.5:1, 7:1, 3:1). Wired into the accent-color picker (against white text) and every text layer's color picker (against the page color — flagged honestly in the UI that a photo background may differ from this proxy check, since the tool has no way to know a photo's actual local contrast at the text's specific position).</li>
+<li><strong>Colorblind preview</strong> (Protanopia / Deuteranopia / Tritanopia / Normal toggle in the Canvas section): real SVG <code>feColorMatrix</code> filters using the standard simulation matrices, applied via CSS <code>filter: url(#cb-...)</code> to the live preview only — doesn't touch the actual export.</li>
+<li><strong>AI-generated alt text</strong>: <code>pages/api/ai.js</code> extended with an <code>imageAlt</code> task using the OpenAI vision message format (<code>image_url</code> content type) — works with any vision-capable model configured via the existing <code>AI_API_KEY</code>/<code>AI_VISION_MODEL</code> env vars. Per-image-layer "✨ Generate with AI" button; the result is now actually used as the rendered <code>&lt;img alt&gt;</code> in <code>CardCanvas.js</code> (previously always empty).</li>
+</ul>
+<h2 id="phase-13-ongoing-not-a-single-deliverable">Phase 13 — ongoing, not a single deliverable</h2>
+<p>No dedicated pass this round beyond what's already true of the codebase: heavy libraries (<code>html2canvas</code>, <code>jszip</code>, <code>jspdf</code>, <code>gifenc</code>) are all lazy-loaded via dynamic <code>import()</code> only when their export button is actually clicked — confirmed via build output that the Editor bundle stayed small (15.1 kB) despite everything added this session. Real performance work (virtualizing long project/template lists, image optimization) should happen as the app's actual usage patterns become clear, not preemptively.</p>
+<h2 id="where-this-leaves-the-roadmap">Where this leaves the roadmap</h2>
+<p>Every phase from 1 through 9 is now either fully complete or completed to the honest limit of what's buildable without infrastructure or account access the user would need to provide (backend, platform developer approvals). Phase 11 and 12 are complete. Phase 13 is ongoing discipline rather than a finish line. Phase 10 and Phase 14 were deliberately not attempted, for the reasons stated above, not from lack of effort — building fake versions of either would be worse than being direct about the boundary.</p>
+<h2 id="api-keys-external-services">API keys / external services</h2>
+<ul>
+<li><strong>Unsplash</strong>: free tier, <code>UNSPLASH_ACCESS_KEY</code> env var, get one at unsplash.com/developers. Without it, <code>/api/stock</code> returns a clear error but everything else still works.</li>
+<li><strong>AI provider</strong> (Phase 4): <code>AI_API_KEY</code> + optional <code>AI_API_URL</code> / <code>AI_MODEL</code>, defaults target OpenAI's <code>gpt-4o-mini</code> but any OpenAI-compatible provider works by changing <code>AI_API_URL</code>/<code>AI_MODEL</code>. Without a key, <code>/api/ai</code> returns a clear "not configured" error but everything else still works.</li>
+</ul>
+<h2 id="deployment">Deployment</h2>
+<p>Standard Next.js on Vercel. Full step-by-step is in <code>README.md</code>. Key point: <code>UNSPLASH_ACCESS_KEY</code> must be added as a Vercel environment variable (not just <code>.env.local</code>) or stock search will fail in production.</p>
+<h2 id="a-meta-note-on-verification">A meta-note on verification</h2>
+<p>Several rounds of this project shipped changes that <em>compiled successfully</em> but didn't actually look/work right, because a clean <code>npm run build</code> only proves the code is syntactically valid — it does not prove CSS variables resolve, thumbnails render at the right size, or text doesn't overlap. The pattern that actually caught real bugs was: build → grep for specific expected strings/classes in the rendered HTML output → when possible, look at real screenshots. Prefer that over declaring something fixed on build-success alone.</p><div class="doc-footer">Generated from the project's living developer-context document. Open this file directly in any browser — no build step needed.</div>
+</div>
+</body>
+</html>

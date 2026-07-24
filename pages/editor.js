@@ -311,6 +311,7 @@ export default function Editor() {
       startX: e.clientX, startY: e.clientY,
       startWidth: layer.width || (isImage ? 25 : 85),
       startHeight: isImage ? (layer.height || 25) : null,
+      rotationRad: ((layer.rotation || 0) * Math.PI) / 180,
       cardWidthPx: cardRef.current.getBoundingClientRect().width
     };
     window.addEventListener('mousemove', onResizeMove);
@@ -320,9 +321,17 @@ export default function Editor() {
     const s = resizeDragState.current;
     if (!s) return;
     const dx = e.clientX - s.startX, dy = e.clientY - s.startY;
-    const deltaWPercent = (dx / s.cardWidthPx) * 100;
+    // FIXED: previously used raw screen-space dx/dy directly, so dragging a
+    // rotated layer's corner resized in the wrong direction (screen axes,
+    // not the layer's own rotated axes). Rotating the mouse delta by the
+    // layer's own angle (inverse rotation) converts it into the layer's
+    // local coordinate frame before applying it to width/height.
+    const { rotationRad: r } = s;
+    const localDx = dx * Math.cos(r) + dy * Math.sin(r);
+    const localDy = -dx * Math.sin(r) + dy * Math.cos(r);
+    const deltaWPercent = (localDx / s.cardWidthPx) * 100;
     if (s.isImage) {
-      const deltaHPercent = (dy / s.cardWidthPx) * 100;
+      const deltaHPercent = (localDy / s.cardWidthPx) * 100;
       updateLayer(s.id, {
         width: Math.min(100, Math.max(5, Math.round(s.startWidth + deltaWPercent))),
         height: Math.min(100, Math.max(5, Math.round(s.startHeight + deltaHPercent)))
@@ -700,8 +709,8 @@ export default function Editor() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24 }}>
-        <div className="card-panel" style={{ maxHeight: '84vh', overflowY: 'auto' }}>
+      <div className="editor-grid">
+        <div className="card-panel editor-sidebar" style={{ maxHeight: '84vh', overflowY: 'auto' }}>
 
           <SectionHeader n="01" title="Canvas" />
           <div className="field">
@@ -800,7 +809,7 @@ export default function Editor() {
           {data.layers.length === 0 && <p style={{ fontSize: 11, color: 'var(--rule-light)', marginBottom: 14 }}>No extra layers yet.</p>}
           {data.layers.map(l => (
             <div key={l.id} className="card-panel" style={{ padding: 10, marginBottom: 8, border: selectedLayerId === l.id ? '1px solid var(--brass)' : '1px solid var(--rule)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: l.id === selectedLayerId ? 8 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: l.id === selectedLayerId ? 8 : 0, flexWrap: 'wrap' }}>
                 {l.type === 'image' && (
                   <img src={l.src} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: l.shape === 'circle' ? '50%' : 3, flexShrink: 0 }} />
                 )}
@@ -1156,7 +1165,7 @@ export default function Editor() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 20, maxWidth: '100%', overflowX: 'auto' }}>
           <svg width="0" height="0" style={{ position: 'absolute' }}>
             <defs>
               {/* Standard color-vision-deficiency simulation matrices (Brettel/Vienot-derived,

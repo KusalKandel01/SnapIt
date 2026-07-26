@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
 import { readKits, saveKits, getActiveKitId, setActiveKitId, newKitId } from '../lib/brandKits';
@@ -49,6 +50,7 @@ export default function Brand() {
 
   return (
     <Layout>
+      <Eyebrow>Brand Registry</Eyebrow>
       <h1 className="page-title">Brand Kit</h1>
       <p className="page-sub">Set up multiple brand kits — one per client, publication, or campaign — and switch between them. Saved locally in this browser, nothing is uploaded anywhere. The active kit's logo is what appears in the sidebar and, if enabled, on your exported cards.</p>
 

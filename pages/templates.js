@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import CardCanvas from '../components/CardCanvas';
 import { findSize } from '../lib/platformSizes';
 import { getDisplayDims } from '../lib/dims';
@@ -109,6 +110,7 @@ export default function Templates() {
 
   return (
     <Layout>
+      <Eyebrow>Template Library</Eyebrow>
       <h1 className="page-title">Templates</h1>
       <p className="page-sub">Click a template to load it straight into the Editor, then customize freely. Nepal-specific occasions and worldwide formats, side by side.</p>
 

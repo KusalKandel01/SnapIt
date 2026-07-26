@@ -65,6 +65,24 @@ Go to `/news`, add RSS feed URLs (not regular webpage URLs — the feed itself, 
 
 **Deliberately not built**: scraping a site's regular web pages for headlines, or rewriting article content to obscure its source. See "Declined features" above for why.
 
+## Cloud Sync (Supabase) — optional
+
+The app works fully without this, entirely local. Set it up if you want accounts and Projects synced across devices.
+
+1. Create a free project at supabase.com
+2. In your Supabase project's SQL Editor, run the contents of `supabase/schema.sql` (creates the `projects` table with row-level security — this is what keeps one user's projects private from another's)
+3. Get your project URL and anon key: Settings → API
+4. Add to `.env.local`:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+   ```
+5. Restart `npm run dev`, go to `/login`, create an account
+
+Once signed in, every save/delete/archive on a project fires a background sync to Supabase — if it fails (offline, etc.) your local copy is untouched, nothing is lost. Signing in on a second device pulls down everything from the cloud automatically.
+
+**Scope, stated plainly**: this is account + cloud storage + cross-device sync — not live simultaneous multi-user editing (two people editing the same card at once with live cursors). That's a meaningfully bigger feature (conflict resolution, presence, real-time channels) and would be its own follow-up, not bundled into this.
+
 ## Push to GitHub
 
 ```bash

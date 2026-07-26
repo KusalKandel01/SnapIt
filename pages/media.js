@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
 import { addMedia, listMedia, deleteMedia, isIndexedDBAvailable } from '../lib/mediaLibrary';
@@ -45,6 +46,7 @@ export default function Media() {
   if (!available) {
     return (
       <Layout>
+        <Eyebrow>Asset Vault</Eyebrow>
         <h1 className="page-title">Media Library</h1>
         <p className="page-sub">Your browser doesn't support IndexedDB, so the media library can't run here. Everything else in the app still works — you can still upload photos directly in the Editor, they just won't be saved to a reusable library.</p>
       </Layout>
@@ -53,6 +55,7 @@ export default function Media() {
 
   return (
     <Layout>
+      <Eyebrow>Asset Vault</Eyebrow>
       <h1 className="page-title">Media Library</h1>
       <p className="page-sub">Upload photos once, reuse them across every project. Stored in this browser (IndexedDB, not the 5-10MB localStorage ceiling other features use) — nothing is uploaded anywhere.</p>
 

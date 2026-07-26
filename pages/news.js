@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import useToast from '../components/useToast';
 
 const FEEDS_KEY = 'snapstudio:newsfeeds';
@@ -91,6 +92,7 @@ export default function News() {
 
   return (
     <Layout>
+      <Eyebrow>Wire Room</Eyebrow>
       <h1 className="page-title">News Digest</h1>
       <p className="page-sub">
         Pulls real headlines from RSS feeds you choose — publishers expose RSS specifically for this kind of use, unlike scraping a site's rendered pages.

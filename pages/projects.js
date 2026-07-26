@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import useToast from '../components/useToast';
-import { readProjects, deleteProject, duplicateProject, setArchived, setSchedule, bulkSetArchived, bulkDelete } from '../lib/projects';
+import { readProjects, deleteProject, duplicateProject, setArchived, setSchedule, bulkSetArchived, bulkDelete, syncFromCloud } from '../lib/projects';
+import { useAuth } from '../components/useAuth';
 
 function formatDate(ts) {
   return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -15,6 +17,16 @@ export default function Projects() {
   const [showArchived, setShowArchived] = useState(false);
   const [selected, setSelected] = useState(new Set());
   const { toast, ToastEl } = useToast();
+  const { user, cloudConfigured } = useAuth();
+  const [syncing, setSyncing] = useState(false);
+
+  async function manualSync() {
+    setSyncing(true);
+    const result = await syncFromCloud();
+    setSyncing(false);
+    if (result.error) toast('Sync failed — check your connection');
+    else { toast(`Synced ${result.synced} project(s) from the cloud`); refresh(); }
+  }
 
   function refresh() { setProjects(readProjects()); }
   useEffect(() => { refresh(); }, []);
@@ -68,8 +80,17 @@ export default function Projects() {
 
   return (
     <Layout>
+      <Eyebrow>Project Archive</Eyebrow>
       <h1 className="page-title">Projects</h1>
       <p className="page-sub">Every project you save from the Editor lives here — searchable, duplicable, and schedulable. This is a local reminder calendar (mark a date, get a visual list) — it does not auto-post anywhere.</p>
+
+      {cloudConfigured && (
+        <p style={{ fontSize: 11.5, color: 'var(--rule-light)', marginBottom: 16 }}>
+          {user
+            ? <>Cloud sync active as <strong style={{ color: 'var(--brass)' }}>{user.email}</strong> — <button onClick={manualSync} disabled={syncing} style={{ background: 'none', border: 'none', color: 'var(--brass)', cursor: 'pointer', textDecoration: 'underline', padding: 0, font: 'inherit' }}>{syncing ? 'syncing…' : 'sync now'}</button></>
+            : <>Projects are saved locally only. <a href="/login" style={{ color: 'var(--brass)' }}>Sign in</a> to sync across devices.</>}
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
         <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search by name or tag" style={{ maxWidth: 280 }} />

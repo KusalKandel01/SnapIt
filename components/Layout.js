@@ -13,7 +13,8 @@ const NAV = [
   { href: '/calendar', label: 'Calendar' },
   { href: '/news', label: 'News Digest' },
   { href: '/media', label: 'Media Library' },
-  { href: '/brand', label: 'Brand Kit' }
+  { href: '/brand', label: 'Brand Kit' },
+  { href: '/login', label: 'Account' }
 ];
 
 export default function Layout({ children }) {

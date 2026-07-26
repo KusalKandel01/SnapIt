@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import CardCanvas from '../components/CardCanvas';
 import Stepper from '../components/Stepper';
 import EmojiPicker from '../components/EmojiPicker';
+import Icon from '../components/Icon';
 import DropZone from '../components/DropZone';
 import useToast from '../components/useToast';
 import { useAutosave, readDraft } from '../components/useAutosave';
@@ -115,6 +117,8 @@ export default function Editor() {
   const [currentProjectId, setCurrentProjectId] = useState(null);
   const [cbMode, setCbMode] = useState('none');
   const [altTextLoading, setAltTextLoading] = useState(null);
+  const [carouselSlides, setCarouselSlides] = useState(null); // null = carousel mode off
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [selectedLayerId, setSelectedLayerId] = useState(null);
   const layerDragState = useRef(null);
   const dragState = useRef(null);
@@ -385,6 +389,94 @@ export default function Editor() {
   }, [selectedLayerId, data.layers]);
 
   function waitForFrame() { return new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r))); }
+
+  // ---- Carousel mode: a sequence of independent slides sharing the
+  // Editor's tools. Each slide is a full data snapshot (its own layout,
+  // layers, everything) so a carousel can genuinely mix a Dark Alert cover
+  // slide with Quote/Stat slides after it, not just repeat one template.
+  function toggleCarouselMode() {
+    if (carouselSlides) {
+      // Turning off: keep editing the currently active slide as the single card.
+      setCarouselSlides(null);
+      setActiveSlideIndex(0);
+    } else {
+      setCarouselSlides([structuredClone(data)]);
+      setActiveSlideIndex(0);
+    }
+  }
+
+  function switchToSlide(index) {
+    if (!carouselSlides) return;
+    const updated = [...carouselSlides];
+    updated[activeSlideIndex] = structuredClone(data); // save current edits first
+    setCarouselSlides(updated);
+    setActiveSlideIndex(index);
+    setData(updated[index]);
+    setSelectedLayerId(null);
+  }
+
+  function addSlide() {
+    const updated = [...carouselSlides];
+    updated[activeSlideIndex] = structuredClone(data);
+    const newSlide = structuredClone(data); // duplicate current slide as the starting point for the new one
+    updated.splice(activeSlideIndex + 1, 0, newSlide);
+    setCarouselSlides(updated);
+    setActiveSlideIndex(activeSlideIndex + 1);
+    setData(newSlide);
+    toast(`Slide ${activeSlideIndex + 2} added`);
+  }
+
+  function deleteSlide(index) {
+    if (carouselSlides.length <= 1) { toast('A carousel needs at least one slide'); return; }
+    const updated = carouselSlides.filter((_, i) => i !== index);
+    const newActive = Math.min(index, updated.length - 1);
+    setCarouselSlides(updated);
+    setActiveSlideIndex(newActive);
+    setData(updated[newActive]);
+    toast('Slide removed');
+  }
+
+  function moveSlide(index, direction) {
+    const target = direction === 'left' ? index - 1 : index + 1;
+    if (target < 0 || target >= carouselSlides.length) return;
+    const updated = [...carouselSlides];
+    updated[activeSlideIndex] = structuredClone(data);
+    [updated[index], updated[target]] = [updated[target], updated[index]];
+    setCarouselSlides(updated);
+    setActiveSlideIndex(target === activeSlideIndex ? index : (index === activeSlideIndex ? target : activeSlideIndex));
+  }
+
+  async function exportCarousel() {
+    setBatchExporting(true);
+    toast('Rendering carousel…');
+    const updated = [...carouselSlides];
+    updated[activeSlideIndex] = structuredClone(data);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const JSZip = (await import('jszip')).default;
+      const zip = new JSZip();
+      const node = cardRef.current;
+      for (let i = 0; i < updated.length; i++) {
+        setData(updated[i]);
+        await waitForFrame();
+        const scale = size.w / node.getBoundingClientRect().width;
+        const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: updated[i].layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
+        const blob = await new Promise(res => canvas.toBlob(res, 'image/png', 0.95));
+        zip.file(`slide-${String(i + 1).padStart(2, '0')}.png`, blob);
+      }
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+      const link = document.createElement('a');
+      link.download = `${slugify(data.projectName)}-carousel.zip`;
+      link.href = URL.createObjectURL(zipBlob);
+      link.click();
+      toast(`Carousel exported — ${updated.length} slides, in order`);
+    } catch (err) {
+      toast('Carousel export failed — try again');
+    }
+    setCarouselSlides(updated);
+    setData(updated[activeSlideIndex]);
+    setBatchExporting(false);
+  }
 
   async function exportAllPlatforms() {
     setBatchExporting(true);
@@ -657,6 +749,7 @@ export default function Editor() {
     <Layout>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
+          <Eyebrow>Proof Sheet · {data.layout} layout</Eyebrow>
           {editingName ? (
             <input
               ref={nameInputRef}
@@ -674,7 +767,7 @@ export default function Editor() {
             />
           ) : (
             <h1 className="page-title" onClick={() => setEditingName(true)} style={{ cursor: 'text' }} title="Click to rename">
-              {data.projectName} <span style={{ fontSize: 13, color: 'var(--rule-light)', fontFamily: 'var(--font-mono)', fontStyle: 'normal' }}>✎ rename</span>
+              {data.projectName} <span style={{ fontSize: 12, color: 'var(--rule-light)', fontFamily: 'var(--font-mono)', fontStyle: 'normal', letterSpacing: '.06em', textTransform: 'uppercase' }}>rename</span>
             </h1>
           )}
           <p className="page-sub">Build one card, pick a platform size, export or copy it straight to your clipboard. Every change autosaves — closing the tab never loses your work.</p>
@@ -713,6 +806,13 @@ export default function Editor() {
         <div className="card-panel editor-sidebar" style={{ maxHeight: '84vh', overflowY: 'auto' }}>
 
           <SectionHeader n="01" title="Canvas" />
+          <div className="field">
+            <label>Carousel mode</label>
+            <button className={`btn ${carouselSlides ? '' : 'secondary'}`} style={{ width: '100%' }} onClick={toggleCarouselMode}>
+              {carouselSlides ? `On — ${carouselSlides.length} slide${carouselSlides.length > 1 ? 's' : ''}` : 'Off — single card'}
+            </button>
+            <p style={{ fontSize: 10.5, color: 'var(--rule-light)', marginTop: 4 }}>Build a multi-slide Instagram/LinkedIn carousel — each slide keeps its own layout and layers, exported as one ordered zip.</p>
+          </div>
           <div className="field">
             <label htmlFor="platform-size">Platform size</label>
             <select id="platform-size" value={data.sizeId} onChange={e => set('sizeId', e.target.value)}>
@@ -813,8 +913,8 @@ export default function Editor() {
                 {l.type === 'image' && (
                   <img src={l.src} alt="" style={{ width: 22, height: 22, objectFit: 'cover', borderRadius: l.shape === 'circle' ? '50%' : 3, flexShrink: 0 }} />
                 )}
-                {l.type === 'chart' && <span style={{ fontSize: 14, flexShrink: 0 }}>📊</span>}
-                {l.type === 'map' && <span style={{ fontSize: 14, flexShrink: 0 }}>🗺️</span>}
+                {l.type === 'chart' && <Icon name="chart" size={14} color="var(--brass)" />}
+                {l.type === 'map' && <Icon name="map" size={14} color="var(--brass)" />}
                 <span
                   onClick={() => setSelectedLayerId(l.id)}
                   style={{ flex: 1, fontSize: 12, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: selectedLayerId === l.id ? 'var(--brass)' : 'var(--white)' }}
@@ -822,11 +922,11 @@ export default function Editor() {
                   {l.type === 'image' ? 'Image layer' : l.type === 'chart' ? `${l.chartType || 'bar'} chart` : l.type === 'map' ? 'Nepal map' : (l.text || '(empty text)')}
                   {layerOutOfBounds(l) && <span title="This layer extends past the card edge" style={{ marginLeft: 4 }}>⚠️</span>}
                 </span>
-                <button className="btn secondary" aria-label={l.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => updateLayer(l.id, { visible: l.visible === false ? true : false })} style={{ padding: '4px 7px', fontSize: 11 }}>{l.visible === false ? '🙈' : '👁'}</button>
-                <button className="btn secondary" aria-label={l.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateLayer(l.id, { locked: !l.locked })} style={{ padding: '4px 7px', fontSize: 11 }}>{l.locked ? '🔒' : '🔓'}</button>
-                <button className="btn secondary" aria-label="Move layer forward" title="Move forward (toward top)" onClick={() => moveLayer(l.id, 'up')} style={{ padding: '4px 6px', fontSize: 11 }}>▲</button>
-                <button className="btn secondary" aria-label="Move layer backward" title="Move backward (toward bottom)" onClick={() => moveLayer(l.id, 'down')} style={{ padding: '4px 6px', fontSize: 11 }}>▼</button>
-                <button className="btn secondary" aria-label="Duplicate layer" onClick={() => duplicateLayer(l.id)} style={{ padding: '4px 7px', fontSize: 11 }}>⧉</button>
+                <button className="btn secondary" aria-label={l.visible === false ? 'Show layer' : 'Hide layer'} onClick={() => updateLayer(l.id, { visible: l.visible === false ? true : false })} style={{ padding: '5px 7px' }}><Icon name={l.visible === false ? 'eyeOff' : 'eye'} /></button>
+                <button className="btn secondary" aria-label={l.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateLayer(l.id, { locked: !l.locked })} style={{ padding: '5px 7px' }}><Icon name={l.locked ? 'lock' : 'unlock'} /></button>
+                <button className="btn secondary" aria-label="Move layer forward" title="Move forward (toward top)" onClick={() => moveLayer(l.id, 'up')} style={{ padding: '5px 6px' }}><Icon name="up" size={12} /></button>
+                <button className="btn secondary" aria-label="Move layer backward" title="Move backward (toward bottom)" onClick={() => moveLayer(l.id, 'down')} style={{ padding: '5px 6px' }}><Icon name="down" size={12} /></button>
+                <button className="btn secondary" aria-label="Duplicate layer" onClick={() => duplicateLayer(l.id)} style={{ padding: '5px 7px' }}><Icon name="duplicate" size={13} /></button>
                 <button onClick={() => deleteLayer(l.id)} aria-label="Delete layer" style={{ background: 'none', border: 'none', color: 'var(--proof-red)', cursor: 'pointer', fontSize: 15, padding: '4px 6px' }}>×</button>
               </div>
               {selectedLayerId === l.id && l.type === 'map' && (
@@ -913,7 +1013,7 @@ export default function Editor() {
                     <label>Alt text (screen readers)</label>
                     <textarea rows={2} value={l.alt || ''} onChange={e => updateLayer(l.id, { alt: e.target.value })} placeholder="Describe what's in this image" />
                     <button className="btn secondary" style={{ width: '100%', marginTop: 6, fontSize: 11 }} onClick={() => generateAltText(l.id, l.src)} disabled={altTextLoading === l.id}>
-                      {altTextLoading === l.id ? 'Looking at image…' : '✨ Generate with AI'}
+                      {altTextLoading === l.id ? 'Looking at image…' : <><Icon name="sparkle" size={12} color="var(--brass)" /> Generate with AI</>}
                     </button>
                   </div>
                 </div>

@@ -56,6 +56,11 @@ a{color:inherit;}
 .main{flex:1; padding:32px 40px; max-width:1400px;}
 
 h1.page-title{font-family:var(--font-display); font-weight:600; font-style:italic; font-size:28px; letter-spacing:.005em; margin:0 0 6px 0; color:var(--white);}
+.page-eyebrow{
+  display:flex; align-items:center; gap:8px; font-family:var(--font-mono); font-size:10.5px;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--brass); margin-bottom:10px;
+}
+.page-eyebrow::before{ content:''; width:14px; height:1px; background:var(--brass); }
 .page-sub{color:var(--rule-light); font-size:13.5px; margin:0 0 26px 0; max-width:640px; line-height:1.6;}
 
 .card-panel{

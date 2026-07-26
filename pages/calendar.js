@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/router';
 import Layout from '../components/Layout';
+import Eyebrow from '../components/Eyebrow';
 import { readProjects, setSchedule } from '../lib/projects';
 
 export default function Calendar() {
@@ -32,6 +33,7 @@ export default function Calendar() {
 
   return (
     <Layout>
+      <Eyebrow>Publishing Ledger</Eyebrow>
       <h1 className="page-title">Publishing Calendar</h1>
       <p className="page-sub">
         A visual list of projects you've marked with a date — a reminder system, nothing more. This app has no connection to any social platform,

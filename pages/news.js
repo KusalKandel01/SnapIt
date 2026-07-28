@@ -6,6 +6,15 @@ import useToast from '../components/useToast';
 
 const FEEDS_KEY = 'snapstudio:newsfeeds';
 
+// A handful of verified-working feeds so the page isn't blank on a first visit —
+// mixed Nepal-focused and global, since that's this product's audience.
+const SUGGESTED_FEEDS = [
+  { label: 'BBC World News', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+  { label: 'OnlineKhabar', url: 'https://www.onlinekhabar.com/feed' },
+  { label: 'Kathmandu Post', url: 'https://kathmandupost.com' },
+  { label: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml' }
+];
+
 function readFeeds() {
   try { return JSON.parse(localStorage.getItem(FEEDS_KEY) || '[]'); } catch (e) { return []; }
 }
@@ -47,20 +56,42 @@ export default function News() {
     saveFeeds(next);
   }
 
-  async function fetchDigest() {
-    if (feeds.length === 0) { toast('Add at least one RSS feed URL first'); return; }
+  async function fetchDigest(feedList) {
+    const list = feedList || feeds;
+    if (list.length === 0) { toast('Add at least one RSS feed URL first'); return; }
     setLoading(true);
     try {
-      const res = await fetch(`/api/news?feeds=${encodeURIComponent(feeds.join(','))}`);
+      const res = await fetch(`/api/news?feeds=${encodeURIComponent(list.join(','))}`);
       const json = await res.json();
       setItems(json.items || []);
       setErrors(json.errors || []);
+
+      // The API auto-detects real feed URLs when a homepage was pasted instead.
+      // Quietly upgrade the saved list to the resolved URL so future refreshes
+      // skip the discovery step and go straight to the fast path.
+      if (json.resolved?.length) {
+        const next = list.map(f => {
+          const hit = json.resolved.find(r => r.requested === f);
+          return hit ? hit.actual : f;
+        });
+        setFeeds(next);
+        saveFeeds(next);
+      }
+
       if (json.errors?.length) toast(`${json.errors.length} feed(s) failed to load`);
       else toast(`${json.items?.length || 0} headlines loaded`);
     } catch (err) {
       toast('Could not load the digest — check your connection');
     }
     setLoading(false);
+  }
+
+  function addSuggested(url) {
+    if (feeds.includes(url)) { toast('Already in your sources'); return; }
+    const next = [...feeds, url];
+    setFeeds(next);
+    saveFeeds(next);
+    fetchDigest(next);
   }
 
   const grouped = useMemo(() => {
@@ -101,12 +132,27 @@ export default function News() {
 
       <div className="card-panel" style={{ maxWidth: 560, marginBottom: 24 }}>
         <div className="field">
-          <label htmlFor="feed-url">Add an RSS feed URL</label>
+          <label htmlFor="feed-url">Add a source</label>
           <form onSubmit={addFeed} style={{ display: 'flex', gap: 6 }}>
-            <input id="feed-url" type="text" value={newFeedUrl} onChange={e => setNewFeedUrl(e.target.value)} placeholder="https://example.com/rss" />
+            <input id="feed-url" type="text" value={newFeedUrl} onChange={e => setNewFeedUrl(e.target.value)} placeholder="https://example.com or its /feed URL" />
             <button className="btn secondary" type="submit">Add</button>
           </form>
+          <p style={{ fontSize: 11, color: 'var(--rule-light)', margin: '6px 0 0 0' }}>
+            Paste a site's homepage and we'll look for its real feed automatically — no need to hunt down the exact <code>/feed</code> or <code>/rss</code> URL yourself.
+          </p>
         </div>
+        {feeds.length === 0 && (
+          <div className="field">
+            <label>Quick add</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {SUGGESTED_FEEDS.map(s => (
+                <button key={s.url} type="button" className="btn secondary" style={{ fontSize: 11.5, padding: '6px 10px' }} onClick={() => addSuggested(s.url)}>
+                  + {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {feeds.length > 0 && (
           <div className="field">
             <label>Your sources ({feeds.length})</label>
@@ -118,11 +164,15 @@ export default function News() {
             ))}
           </div>
         )}
-        <button className="btn" onClick={fetchDigest} disabled={loading} style={{ width: '100%' }}>{loading ? 'Loading…' : 'Refresh digest'}</button>
+        <button className="btn" onClick={() => fetchDigest()} disabled={loading} style={{ width: '100%' }}>{loading ? 'Loading…' : 'Refresh digest'}</button>
         {errors.length > 0 && (
-          <p style={{ fontSize: 10.5, color: 'var(--proof-red)', marginTop: 8 }}>
-            {errors.length} feed(s) couldn't be read — double-check the URL is a real RSS/Atom feed, not a regular webpage.
-          </p>
+          <div style={{ marginTop: 10 }}>
+            {errors.map((e, i) => (
+              <p key={i} style={{ fontSize: 10.5, color: 'var(--proof-red)', marginBottom: 6, wordBreak: 'break-word' }}>
+                <strong>{e.feed}</strong><br />{e.error}
+              </p>
+            ))}
+          </div>
         )}
       </div>
 

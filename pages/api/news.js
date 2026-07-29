@@ -8,9 +8,12 @@
 // what nepalipaisa.com's /news actually is — no RSS feed, dynamically
 // loaded, explicit copyright notice) is a different, unsanctioned thing.
 //
-// This intentionally returns headline + link + source + date only —
-// never full article text — because the point is to get you to a fast
-// starting point with attribution intact, not to reproduce the article.
+// This intentionally returns headline + link + source + date + thumbnail
+// image only — never full article text — because the point is to get you
+// to a fast starting point with attribution intact, not to reproduce the
+// article. The image comes from the feed's own media tags (media:content,
+// media:thumbnail, enclosure) or an <img> already embedded in its
+// description — never fetched/scraped from the article page itself.
 
 function extractTag(block, tag) {
   const m = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'));
@@ -33,6 +36,33 @@ function extractLink(block) {
   return atom ? atom[1] : '';
 }
 
+function extractImage(block) {
+  // Covers the handful of ways feeds actually carry an image, in the order
+  // real-world feeds most commonly use them:
+  // 1. <media:content url="..." medium="image" /> or type="image/*"
+  const mediaContent = block.match(/<media:content[^>]*url=["']([^"']+)["'][^>]*>/i)
+    || block.match(/<media:content[^>]*(?:medium=["']image["']|type=["']image\/[^"']*["'])[^>]*url=["']([^"']+)["'][^>]*>/i);
+  if (mediaContent) return mediaContent[1];
+
+  // 2. <media:thumbnail url="..." />
+  const mediaThumb = block.match(/<media:thumbnail[^>]*url=["']([^"']+)["'][^>]*>/i);
+  if (mediaThumb) return mediaThumb[1];
+
+  // 3. <enclosure url="..." type="image/*" />
+  const enclosure = block.match(/<enclosure[^>]*url=["']([^"']+)["'][^>]*type=["']image\/[^"']*["'][^>]*>/i)
+    || block.match(/<enclosure[^>]*type=["']image\/[^"']*["'][^>]*url=["']([^"']+)["'][^>]*>/i);
+  if (enclosure) return enclosure[1];
+
+  // 4. First <img src="..."> inside the description or content:encoded body
+  const bodyMatch = block.match(/<content:encoded[^>]*>([\s\S]*?)<\/content:encoded>/i)
+    || block.match(/<description[^>]*>([\s\S]*?)<\/description>/i);
+  if (bodyMatch) {
+    const img = bodyMatch[1].match(/<img[^>]*src=["']([^"']+)["']/i);
+    if (img) return img[1];
+  }
+  return '';
+}
+
 function parseFeed(xml, sourceUrl) {
   const feedTitleMatch = xml.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const sourceName = feedTitleMatch ? extractTag(`<title>${feedTitleMatch[1]}</title>`, 'title') : new URL(sourceUrl).hostname;
@@ -45,35 +75,19 @@ function parseFeed(xml, sourceUrl) {
     const link = extractLink(block);
     const pubDate = extractTag(block, 'pubDate') || extractTag(block, 'published') || extractTag(block, 'updated');
     const description = extractTag(block, 'description') || extractTag(block, 'summary');
+    const image = extractImage(block);
     if (title) {
       items.push({
         title,
         link,
         source: sourceName,
         pubDate: pubDate || null,
-        description: description ? description.slice(0, 200) : ''
+        description: description ? description.slice(0, 200) : '',
+        image: image || ''
       });
     }
   }
   return items;
-}
-
-const UA = 'Mozilla/5.0 (compatible; SnapStudioNewsDigest/1.0; +https://github.com/)';
-
-async function fetchWithTimeout(url, extraHeaders = {}, ms = 10000) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  try {
-    return await fetch(url, {
-      headers: { 'User-Agent': UA, ...extraHeaders },
-      signal: controller.signal
-    });
-  } catch (err) {
-    if (err.name === 'AbortError') throw new Error('Timed out after 10s \u2014 the feed server is slow or unresponsive');
-    throw new Error(`Network error: ${err.message}`);
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 // Given a webpage's HTML, find the <link rel="alternate" type="application/rss+xml|atom+xml" href="..."> tag
@@ -90,10 +104,13 @@ function discoverFeedUrl(html, baseUrl) {
   return null;
 }
 
+const { safeFetch, readCapped } = require('../../lib/safeFetch');
+
 async function fetchAndParse(url) {
-  const r = await fetchWithTimeout(url, { 'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' });
+  const r = await safeFetch(url, { 'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' });
   if (!r.ok) throw new Error(`Server returned ${r.status} ${r.statusText} \u2014 this URL may not be a real feed, or the site is blocking automated requests`);
-  const body = await r.text();
+  const bodyBuf = await readCapped(r);
+  const body = bodyBuf.toString('utf-8');
   const looksLikeXml = /<rss|<feed|<\?xml/i.test(body.slice(0, 500));
   return { body, looksLikeXml };
 }
@@ -108,16 +125,8 @@ export default async function handler(req, res) {
 
   const results = await Promise.allSettled(
     urls.map(async (url) => {
-      const parsed = new URL(url); // throws a clear error on a malformed URL
-      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('Only http/https URLs are allowed');
+      new URL(url); // throws a clear "Invalid URL" error early for malformed input
 
-      // FIXED: a custom User-Agent like "SnapStudioNewsDigest/1.0" gets
-      // blocked with a 403 by a meaningful number of real news sites —
-      // they allow browsers and well-known feed readers, and reject
-      // anything unrecognized. A standard browser UA is what real feed
-      // readers (Feedly, etc.) actually send for exactly this reason.
-      // Also added: a 10s timeout, since a single slow/hanging feed
-      // shouldn't silently stall the whole digest.
       let { body: xml, looksLikeXml } = await fetchAndParse(url);
       let resolvedFrom = null;
 

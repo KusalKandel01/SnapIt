@@ -36,6 +36,7 @@ export default function Brand() {
   }
 
   function deleteKit(id) {
+    if (!confirm('Delete this brand kit? This can\u2019t be undone.')) return;
     const next = kits.filter(k => k.id !== id);
     const nextActive = activeId === id ? (next[0]?.id || '') : activeId;
     persist(next, nextActive);

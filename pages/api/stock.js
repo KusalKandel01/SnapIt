@@ -1,5 +1,15 @@
 // GET /api/stock?q=mountains
 // Proxies Unsplash's search endpoint so the API key never reaches the browser.
+//
+// Lower stakes than the AI proxy (Unsplash's free tier is naturally rate-
+// limited and this doesn't cost money per-call the way an LLM request does),
+// but same principle: don't hand raw upstream error bodies to any caller.
+function safeErrorPayload(message, detail) {
+  const payload = { error: message };
+  if (process.env.NODE_ENV !== 'production') payload.detail = detail;
+  return payload;
+}
+
 export default async function handler(req, res) {
   const { q, orientation } = req.query;
   const key = process.env.UNSPLASH_ACCESS_KEY;
@@ -23,7 +33,7 @@ export default async function handler(req, res) {
     );
     if (!upstream.ok) {
       const text = await upstream.text();
-      return res.status(upstream.status).json({ error: 'Unsplash request failed', detail: text });
+      return res.status(upstream.status).json(safeErrorPayload('Unsplash request failed', text));
     }
     const data = await upstream.json();
     const results = (data.results || []).map(r => ({
@@ -36,6 +46,6 @@ export default async function handler(req, res) {
     }));
     res.status(200).json({ results });
   } catch (err) {
-    res.status(500).json({ error: 'Server error reaching Unsplash', detail: String(err) });
+    res.status(500).json(safeErrorPayload('Server error reaching Unsplash', String(err)));
   }
 }

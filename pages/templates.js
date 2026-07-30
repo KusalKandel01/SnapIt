@@ -10,8 +10,14 @@ import { getDisplayDims } from '../lib/dims';
 // commercial use). Templates that don't need a specific photo use an empty
 // bg, which CardCanvas renders as a solid color panel instead — this is why
 // the gallery no longer looks like the same photo copy-pasted everywhere.
-const PHOTO_NEWSPAPER = 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&q=60';
-const PHOTO_SKYLINE = 'https://images.unsplash.com/photo-1497968978037-599ea9980d60?w=800&q=60';
+// Routed through /api/image-proxy: research turned up a confirmed real-world
+// case (unsplash/unsplash-js#73) of Unsplash's image CDN not reliably
+// sending CORS headers for exactly this use — an <img> loaded into a canvas
+// for capture. Same fix as News Digest and the stock photo picker: make it
+// same-origin so html2canvas can never taint on it, rather than trust an
+// assumption about a third party's headers that isn't guaranteed to hold.
+const PHOTO_NEWSPAPER = `/api/image-proxy?url=${encodeURIComponent('https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&q=60')}`;
+const PHOTO_SKYLINE = `/api/image-proxy?url=${encodeURIComponent('https://images.unsplash.com/photo-1497968978037-599ea9980d60?w=800&q=60')}`;
 
 const base = (overrides) => ({
   layout: 'dark', align: 'left', color: '#cf1b2b', font: "'Anton',sans-serif",

@@ -147,6 +147,11 @@ export default function News() {
       if (json.errors?.length) toast(`${json.errors.length} feed(s) failed to load`);
       else toast(`${json.items?.length || 0} headlines loaded`);
     } catch (err) {
+      // A toast alone can vanish before it's noticed, leaving the page
+      // looking identical to "nothing happened." Put the failure in the
+      // same visible errors list a per-feed failure uses, so there's
+      // always something on-screen explaining what happened.
+      setErrors([{ feed: 'request', error: err.message || 'The request itself failed \u2014 check your connection or try again' }]);
       toast('Could not load the digest — check your connection');
     }
     setLoading(false);

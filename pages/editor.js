@@ -23,7 +23,12 @@ const DEFAULT_DATA = {
   headSize: 34,
   bodySize: 12,
   mediaType: 'image',
-  bg: 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&q=60',
+  // Routed through /api/image-proxy — same reasoning as templates.js: a
+  // confirmed real-world case exists of Unsplash's image CDN not reliably
+  // sending CORS headers for canvas capture, and this is the very first
+  // image every new Editor session shows, so it's the highest-traffic
+  // instance of this pattern in the whole app.
+  bg: `/api/image-proxy?url=${encodeURIComponent('https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&q=60')}`,
   videoUrl: '',
   panX: 50, panY: 50, zoom: 100,
   watermark: 'yoursource',
@@ -611,30 +616,39 @@ export default function Editor() {
   }
 
   async function exportImage(format) {
-    const html2canvas = (await import('html2canvas')).default;
-    const node = cardRef.current;
-    const scale = size.w / node.getBoundingClientRect().width;
-    const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
+    setBatchExporting(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const node = cardRef.current;
+      const scale = size.w / node.getBoundingClientRect().width;
+      const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
 
-    if (format === 'pdf') {
-      const { jsPDF } = await import('jspdf');
-      // Orient and size the PDF page to match the card's own aspect ratio
-      // (in points, 1px = 0.75pt) instead of forcing it onto a fixed
-      // Letter/A4 page — a Story-ratio card on an A4 page would either
-      // shrink tiny or spill off the edge.
-      const wPt = size.w * 0.75, hPt = size.h * 0.75;
-      const pdf = new jsPDF({ orientation: wPt > hPt ? 'landscape' : 'portrait', unit: 'pt', format: [wPt, hPt] });
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, wPt, hPt);
-      pdf.save(`${slugify(data.projectName)}.pdf`);
-      toast('PDF downloaded');
-      return;
+      if (format === 'pdf') {
+        const { jsPDF } = await import('jspdf');
+        // Orient and size the PDF page to match the card's own aspect ratio
+        // (in points, 1px = 0.75pt) instead of forcing it onto a fixed
+        // Letter/A4 page — a Story-ratio card on an A4 page would either
+        // shrink tiny or spill off the edge.
+        const wPt = size.w * 0.75, hPt = size.h * 0.75;
+        const pdf = new jsPDF({ orientation: wPt > hPt ? 'landscape' : 'portrait', unit: 'pt', format: [wPt, hPt] });
+        pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, wPt, hPt);
+        pdf.save(`${slugify(data.projectName)}.pdf`);
+        toast('PDF downloaded');
+      } else {
+        const link = document.createElement('a');
+        link.download = `${slugify(data.projectName)}.${format}`;
+        link.href = canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png', 0.95);
+        link.click();
+        toast('Image downloaded');
+      }
+    } catch (err) {
+      // Same failure mode as the batch exports — a cross-origin image
+      // without proper headers taints the canvas and toDataURL/toBlob
+      // throws. Without this, that failure was completely silent: the
+      // button just did nothing, with zero feedback.
+      toast('Export failed — a cross-origin image may have blocked this. Try uploading the photo as a file instead of using a URL.');
     }
-
-    const link = document.createElement('a');
-    link.download = `${slugify(data.projectName)}.${format}`;
-    link.href = canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png', 0.95);
-    link.click();
-    toast('Image downloaded');
+    setBatchExporting(false);
   }
 
   // ---- Animated GIF export: a fade-in reveal, genuinely encoded frame by
@@ -696,14 +710,21 @@ export default function Editor() {
 
   async function copyImage() {
     if (!navigator.clipboard || !window.ClipboardItem) { toast("Your browser can't copy images — use Download instead"); return; }
-    const html2canvas = (await import('html2canvas')).default;
-    const node = cardRef.current;
-    const scale = size.w / node.getBoundingClientRect().width;
-    const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
-    canvas.toBlob(async blob => {
-      try { await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]); toast('Copied — paste it anywhere'); }
-      catch (e) { toast('Copy blocked by browser — try Download instead'); }
-    });
+    setBatchExporting(true);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const node = cardRef.current;
+      const scale = size.w / node.getBoundingClientRect().width;
+      const canvas = await html2canvas(node, { scale, useCORS: true, backgroundColor: data.layout === 'light' ? '#f4f2ee' : '#0b0c0e' });
+      canvas.toBlob(async blob => {
+        try { await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]); toast('Copied — paste it anywhere'); }
+        catch (e) { toast('Copy blocked by browser — try Download instead'); }
+        setBatchExporting(false);
+      });
+    } catch (err) {
+      toast('Copy failed — a cross-origin image may have blocked this. Try uploading the photo as a file instead of using a URL.');
+      setBatchExporting(false);
+    }
   }
 
   function saveProject() {
@@ -1131,7 +1152,7 @@ export default function Editor() {
                       {stockResults.map(r => (
                         <div key={r.id}>
                           <button
-                            onClick={() => { set('mediaType', 'image'); set('bg', r.full); resetFraming(); toast(`Photo by ${r.credit} applied`); }}
+                            onClick={() => { set('mediaType', 'image'); set('bg', `/api/image-proxy?url=${encodeURIComponent(r.full)}`); resetFraming(); toast(`Photo by ${r.credit} applied`); }}
                             aria-label={`Use photo: ${r.alt}`}
                             style={{ width: '100%', height: 54, padding: 0, border: '1px solid var(--rule)', borderRadius: 4, cursor: 'pointer', background: `url('${r.thumb}') center/cover` }}
                           />
@@ -1244,14 +1265,14 @@ export default function Editor() {
 
           <SectionHeader n="07" title="Export & Project" />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-            <button className="btn" onClick={() => exportImage('png')}>Download PNG</button>
-            <button className="btn secondary" onClick={() => exportImage('jpeg')}>Download JPEG</button>
+            <button className="btn" onClick={() => exportImage('png')} disabled={batchExporting}>{batchExporting ? '...' : 'Download PNG'}</button>
+            <button className="btn secondary" onClick={() => exportImage('jpeg')} disabled={batchExporting}>{batchExporting ? '...' : 'Download JPEG'}</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
-            <button className="btn secondary" onClick={() => exportImage('pdf')}>Download PDF</button>
+            <button className="btn secondary" onClick={() => exportImage('pdf')} disabled={batchExporting}>{batchExporting ? '...' : 'Download PDF'}</button>
             <button className="btn secondary" onClick={exportAnimatedGif} disabled={batchExporting}>{batchExporting ? '...' : 'Animated GIF'}</button>
           </div>
-          <button className="btn secondary" style={{ width: '100%', marginTop: 8 }} onClick={copyImage}>Copy image</button>
+          <button className="btn secondary" style={{ width: '100%', marginTop: 8 }} onClick={copyImage} disabled={batchExporting}>Copy image</button>
           <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={exportAllPlatforms} disabled={batchExporting}>
             {batchExporting ? 'Rendering all sizes…' : 'Export for Instagram, X, Facebook, TikTok — all at once'}
           </button>

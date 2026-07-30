@@ -106,9 +106,24 @@ function discoverFeedUrl(html, baseUrl) {
 
 const { safeFetch, readCapped } = require('../../lib/safeFetch');
 
+const BOT_CHALLENGE_SIGNS = /cf-browser-verification|checking your browser|just a moment\.\.\.|__cf_chl_|cf-challenge|captcha-delivery|perimeterx|please enable cookies|access denied/i;
+
 async function fetchAndParse(url) {
   const r = await safeFetch(url, { 'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' });
-  if (!r.ok) throw new Error(`Server returned ${r.status} ${r.statusText} \u2014 this URL may not be a real feed, or the site is blocking automated requests`);
+
+  if (!r.ok) {
+    // A 403/503 with a challenge-page fingerprint means bot-protection
+    // blocked us specifically, not "this URL is wrong" — worth telling
+    // apart, since the fix is completely different (nothing to fix on your
+    // end; that source just doesn't allow automated fetching).
+    if (r.status === 403 || r.status === 503) {
+      const peek = (await r.clone().text().catch(() => '')).slice(0, 2000);
+      if (BOT_CHALLENGE_SIGNS.test(peek)) {
+        throw new Error(`Blocked by this site's bot-protection (${r.status}) \u2014 not a broken URL, this source just doesn't allow automated fetching`);
+      }
+    }
+    throw new Error(`Server returned ${r.status} ${r.statusText} \u2014 this URL may not be a real feed, or the site is blocking automated requests`);
+  }
   const bodyBuf = await readCapped(r);
   const body = bodyBuf.toString('utf-8');
   const looksLikeXml = /<rss|<feed|<\?xml/i.test(body.slice(0, 500));

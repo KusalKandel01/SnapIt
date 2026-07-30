@@ -34,6 +34,7 @@ export default function Media() {
   }
 
   async function onDelete(id) {
+    if (!confirm('Remove this from your media library? This can\u2019t be undone.')) return;
     await deleteMedia(id);
     toast('Removed from library');
     refresh();
